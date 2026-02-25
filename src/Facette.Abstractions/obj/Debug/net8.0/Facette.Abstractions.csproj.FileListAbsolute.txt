@@ -1,0 +1,13 @@
+/home/thomas/Lab/Local/FacetAndMapperly/src/Facette.Abstractions/bin/Debug/net8.0/Facette.Abstractions.deps.json
+/home/thomas/Lab/Local/FacetAndMapperly/src/Facette.Abstractions/bin/Debug/net8.0/Facette.Abstractions.dll
+/home/thomas/Lab/Local/FacetAndMapperly/src/Facette.Abstractions/bin/Debug/net8.0/Facette.Abstractions.pdb
+/home/thomas/Lab/Local/FacetAndMapperly/src/Facette.Abstractions/bin/Debug/net8.0/Facette.Abstractions.xml
+/home/thomas/Lab/Local/FacetAndMapperly/src/Facette.Abstractions/obj/Debug/net8.0/Facette.Abstractions.GeneratedMSBuildEditorConfig.editorconfig
+/home/thomas/Lab/Local/FacetAndMapperly/src/Facette.Abstractions/obj/Debug/net8.0/Facette.Abstractions.AssemblyInfoInputs.cache
+/home/thomas/Lab/Local/FacetAndMapperly/src/Facette.Abstractions/obj/Debug/net8.0/Facette.Abstractions.AssemblyInfo.cs
+/home/thomas/Lab/Local/FacetAndMapperly/src/Facette.Abstractions/obj/Debug/net8.0/Facette.Abstractions.csproj.CoreCompileInputs.cache
+/home/thomas/Lab/Local/FacetAndMapperly/src/Facette.Abstractions/obj/Debug/net8.0/Facette.Abstractions.dll
+/home/thomas/Lab/Local/FacetAndMapperly/src/Facette.Abstractions/obj/Debug/net8.0/refint/Facette.Abstractions.dll
+/home/thomas/Lab/Local/FacetAndMapperly/src/Facette.Abstractions/obj/Debug/net8.0/Facette.Abstractions.xml
+/home/thomas/Lab/Local/FacetAndMapperly/src/Facette.Abstractions/obj/Debug/net8.0/Facette.Abstractions.pdb
+/home/thomas/Lab/Local/FacetAndMapperly/src/Facette.Abstractions/obj/Debug/net8.0/ref/Facette.Abstractions.dll

@@ -1,0 +1,10 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Facette.Abstractions/Facette.Abstractions.csproj" />
+    <Project Path="src/Facette/Facette.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Facette.IntegrationTests/Facette.IntegrationTests.csproj" />
+    <Project Path="tests/Facette.Tests/Facette.Tests.csproj" />
+  </Folder>
+</Solution>
