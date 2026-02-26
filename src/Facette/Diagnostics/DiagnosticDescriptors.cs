@@ -35,5 +35,13 @@ namespace Facette.Generator.Diagnostics
             category: "Facette",
             defaultSeverity: DiagnosticSeverity.Warning,
             isEnabledByDefault: true);
+
+        public static readonly DiagnosticDescriptor FCT005_MapFromPropertyNotFound = new DiagnosticDescriptor(
+            id: "FCT005",
+            title: "MapFrom source property not found",
+            messageFormat: "[MapFrom] on '{0}' references property '{1}' which was not found on source type '{2}'",
+            category: "Facette",
+            defaultSeverity: DiagnosticSeverity.Warning,
+            isEnabledByDefault: true);
     }
 }
