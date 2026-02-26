@@ -8,24 +8,39 @@ var product = new Product
     Description = "A fine widget",
     Price = 9.99m,
     InternalSku = "WDG-001",
-    CreatedAt = DateTime.UtcNow
+    CreatedAt = DateTime.UtcNow,
+    Category = new Category { Id = 10, Name = "Tools" },
+    Reviews = new List<Review>
+    {
+        new() { Id = 1, Author = "Alice", Text = "Great product!", Rating = 5 },
+        new() { Id = 2, Author = "Bob", Text = "Decent quality", Rating = 3 }
+    }
 };
 
-// Using inline method
+// Map to DTO
 var dto = ProductDto.FromSource(product);
 Console.WriteLine($"DTO: {dto.Id} - {dto.Name} - {dto.Price:C}");
-
-// Using extension method
-var dto2 = product.ToDto();
-Console.WriteLine($"Extension: {dto2.Id} - {dto2.Name}");
+Console.WriteLine($"  Category: {dto.Category.Name}");
+Console.WriteLine($"  Reviews: {dto.Reviews.Count}");
+foreach (var review in dto.Reviews)
+{
+    Console.WriteLine($"    - {review.Author}: {review.Text} ({review.Rating}/5)");
+}
 
 // Round-trip
 var backToProduct = dto.ToSource();
-Console.WriteLine($"Round-trip: {backToProduct.Id} - {backToProduct.Name} - {backToProduct.Price:C}");
+Console.WriteLine($"\nRound-trip: {backToProduct.Id} - {backToProduct.Name} - {backToProduct.Price:C}");
+Console.WriteLine($"  Category: {backToProduct.Category.Name}");
+Console.WriteLine($"  Reviews: {backToProduct.Reviews.Count}");
+
+// Extension method
+var dto2 = product.ToDto();
+Console.WriteLine($"\nExtension: {dto2.Id} - {dto2.Name}");
 
 // Queryable projection
 var products = new List<Product> { product }.AsQueryable();
 var projected = products.ProjectToDto().ToList();
-Console.WriteLine($"Projected: {projected.Count} items");
+Console.WriteLine($"\nProjected: {projected.Count} items");
+Console.WriteLine($"  First: {projected[0].Name} in {projected[0].Category.Name} with {projected[0].Reviews.Count} reviews");
 
 Console.WriteLine("\nFacette is working!");

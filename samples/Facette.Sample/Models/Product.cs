@@ -8,4 +8,6 @@ public class Product
     public decimal Price { get; set; }
     public string InternalSku { get; set; } = "";
     public DateTime CreatedAt { get; set; }
+    public Category Category { get; set; } = new();
+    public List<Review> Reviews { get; set; } = new();
 }
