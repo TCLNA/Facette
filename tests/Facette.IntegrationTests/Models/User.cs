@@ -8,4 +8,6 @@ public class User
     public string Email { get; set; } = "";
     public string PasswordHash { get; set; } = "";
     public DateTime CreatedAt { get; set; }
+    public Address? HomeAddress { get; set; }
+    public string[] Tags { get; set; } = Array.Empty<string>();
 }

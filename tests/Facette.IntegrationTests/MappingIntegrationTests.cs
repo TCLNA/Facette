@@ -37,7 +37,8 @@ public class MappingIntegrationTests
             FirstName = "Bob",
             LastName = "Jones",
             Email = "bob@example.com",
-            CreatedAt = new DateTime(2024, 6, 1)
+            CreatedAt = new DateTime(2024, 6, 1),
+            Tags = new[] { "test" }
         };
 
         var user = dto.ToSource();
