@@ -28,7 +28,7 @@ namespace Facette.Generator
                 {
                     spc.ReportDiagnostic(Diagnostic.Create(
                         diag.Descriptor,
-                        diag.Location,
+                        diag.ToLocation(),
                         diag.MessageArgs));
 
                     if (diag.Descriptor.DefaultSeverity == DiagnosticSeverity.Error)

@@ -14,7 +14,10 @@ namespace Facette.Generator.Builders
         {
             var targetSymbol = (INamedTypeSymbol)context.TargetSymbol;
             var diagnosticsBuilder = ImmutableArray.CreateBuilder<DiagnosticInfo>();
-            var location = context.TargetNode.GetLocation();
+            var locationObj = context.TargetNode.GetLocation();
+            var filePath = locationObj.SourceTree != null ? locationObj.SourceTree.FilePath : "";
+            var textSpan = locationObj.SourceSpan;
+            var lineSpan = locationObj.GetLineSpan().Span;
 
             var attribute = context.Attributes[0];
 
@@ -61,7 +64,9 @@ namespace Facette.Generator.Builders
             {
                 diagnosticsBuilder.Add(new DiagnosticInfo(
                     DiagnosticDescriptors.FCT002_IncludeExcludeConflict,
-                    location,
+                    filePath,
+                    textSpan,
+                    lineSpan,
                     new object[] { targetSymbol.Name }));
             }
 
@@ -95,43 +100,56 @@ namespace Facette.Generator.Builders
             HashSet<string> include)
         {
             var builder = ImmutableArray.CreateBuilder<PropertyModel>();
+            var seen = new HashSet<string>();
 
-            foreach (var member in sourceType.GetMembers())
+            var current = sourceType;
+            while (current != null && current.SpecialType != SpecialType.System_Object)
             {
-                if (!(member is IPropertySymbol prop))
+                foreach (var member in current.GetMembers())
                 {
-                    continue;
+                    if (!(member is IPropertySymbol prop))
+                    {
+                        continue;
+                    }
+
+                    // Skip if already seen from a derived type (override)
+                    if (!seen.Add(prop.Name))
+                    {
+                        continue;
+                    }
+
+                    if (prop.DeclaredAccessibility != Accessibility.Public)
+                    {
+                        continue;
+                    }
+
+                    if (prop.IsStatic || prop.IsIndexer)
+                    {
+                        continue;
+                    }
+
+                    if (prop.GetMethod == null)
+                    {
+                        continue;
+                    }
+
+                    if (include != null && !include.Contains(prop.Name))
+                    {
+                        continue;
+                    }
+
+                    if (exclude.Contains(prop.Name))
+                    {
+                        continue;
+                    }
+
+                    var typeDisplay = prop.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+                    var isValueType = prop.Type.IsValueType;
+
+                    builder.Add(new PropertyModel(prop.Name, typeDisplay, isValueType));
                 }
 
-                if (prop.DeclaredAccessibility != Accessibility.Public)
-                {
-                    continue;
-                }
-
-                if (prop.IsStatic || prop.IsIndexer)
-                {
-                    continue;
-                }
-
-                if (prop.GetMethod == null)
-                {
-                    continue;
-                }
-
-                if (include != null && !include.Contains(prop.Name))
-                {
-                    continue;
-                }
-
-                if (exclude.Contains(prop.Name))
-                {
-                    continue;
-                }
-
-                var typeDisplay = prop.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
-                var isValueType = prop.Type.IsValueType;
-
-                builder.Add(new PropertyModel(prop.Name, typeDisplay, isValueType));
+                current = current.BaseType;
             }
 
             return builder.ToImmutable();
