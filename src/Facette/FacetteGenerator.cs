@@ -23,6 +23,12 @@ namespace Facette.Generator
                 }
 
                 EmitDtoSource(spc, model);
+
+                if (model.GenerateMapper)
+                {
+                    var mapperCode = MapperClassBuilder.Build(model);
+                    spc.AddSource(model.TypeName + "Mapper.g.cs", mapperCode);
+                }
             });
         }
 
