@@ -143,7 +143,98 @@ namespace Facette.Generator.Builders
             bool generateMapper = GetNamedBoolArg(attribute, "GenerateMapper", true);
 
             // Collect properties from source type
-            var properties = GetSourceProperties(sourceType, exclude, include);
+            var autoProperties = GetSourceProperties(sourceType, exclude, include);
+
+            // Scan user-declared properties on the target type for [MapFrom] attributes
+            var userDeclaredNames = new HashSet<string>();
+            var customMappings = ImmutableArray.CreateBuilder<PropertyModel>();
+
+            foreach (var member in targetSymbol.GetMembers())
+            {
+                if (!(member is IPropertySymbol targetProp))
+                {
+                    continue;
+                }
+
+                if (targetProp.DeclaredAccessibility != Accessibility.Public)
+                {
+                    continue;
+                }
+
+                if (targetProp.IsStatic || targetProp.IsIndexer)
+                {
+                    continue;
+                }
+
+                // Track all user-declared property names so they are not re-generated
+                userDeclaredNames.Add(targetProp.Name);
+
+                // Check for [MapFrom] attribute
+                string mapFromSource = null;
+                foreach (var attrData in targetProp.GetAttributes())
+                {
+                    if (attrData.AttributeClass != null
+                        && attrData.AttributeClass.ToDisplayString() == "Facette.Abstractions.MapFromAttribute"
+                        && attrData.ConstructorArguments.Length > 0
+                        && attrData.ConstructorArguments[0].Value is string srcName)
+                    {
+                        mapFromSource = srcName;
+                        break;
+                    }
+                }
+
+                if (mapFromSource == null)
+                {
+                    // User-declared property without [MapFrom] — skip entirely
+                    continue;
+                }
+
+                // Validate that the source property exists
+                var sourceProp = FindSourceProperty(sourceType, mapFromSource);
+                if (sourceProp == null)
+                {
+                    diagnosticsBuilder.Add(new DiagnosticInfo(
+                        DiagnosticDescriptors.FCT005_MapFromPropertyNotFound,
+                        filePath,
+                        textSpan,
+                        lineSpan,
+                        new object[] { targetProp.Name, mapFromSource, sourceType.Name }));
+                    continue;
+                }
+
+                var typeDisplay = sourceProp.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+                var isValueType = sourceProp.Type.IsValueType;
+
+                customMappings.Add(new PropertyModel(
+                    targetProp.Name,
+                    typeDisplay,
+                    isValueType,
+                    MappingKind.Custom,
+                    mapFromSource,
+                    "",
+                    "",
+                    "",
+                    false,
+                    false));
+            }
+
+            // Filter auto-generated properties — remove any whose name matches a user-declared property
+            var filteredBuilder = ImmutableArray.CreateBuilder<PropertyModel>();
+            foreach (var prop in autoProperties)
+            {
+                if (!userDeclaredNames.Contains(prop.Name))
+                {
+                    filteredBuilder.Add(prop);
+                }
+            }
+
+            // Merge: filtered auto-generated + custom mappings
+            foreach (var custom in customMappings)
+            {
+                filteredBuilder.Add(custom);
+            }
+
+            var properties = filteredBuilder.ToImmutable();
 
             var ns = targetSymbol.ContainingNamespace.IsGlobalNamespace
                 ? ""
@@ -244,6 +335,30 @@ namespace Facette.Generator.Builders
             }
 
             return names;
+        }
+
+        private static IPropertySymbol FindSourceProperty(INamedTypeSymbol sourceType, string propertyName)
+        {
+            var current = sourceType;
+            while (current != null && current.SpecialType != SpecialType.System_Object)
+            {
+                foreach (var member in current.GetMembers())
+                {
+                    if (member is IPropertySymbol prop
+                        && prop.Name == propertyName
+                        && prop.DeclaredAccessibility == Accessibility.Public
+                        && !prop.IsStatic
+                        && !prop.IsIndexer
+                        && prop.GetMethod != null)
+                    {
+                        return prop;
+                    }
+                }
+
+                current = current.BaseType;
+            }
+
+            return null;
         }
 
         private static bool GetNamedBoolArg(AttributeData attribute, string name, bool defaultValue)

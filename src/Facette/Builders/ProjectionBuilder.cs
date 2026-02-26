@@ -20,8 +20,9 @@ namespace Facette.Generator.Builders
             for (int i = 0; i < properties.Length; i++)
             {
                 var prop = properties[i];
+                var sourceName = prop.MappingKind == MappingKind.Custom ? prop.SourcePropertyName : prop.Name;
                 var comma = i < properties.Length - 1 ? "," : "";
-                sb.AppendLine("            " + prop.Name + " = source." + prop.Name + comma);
+                sb.AppendLine("            " + prop.Name + " = source." + sourceName + comma);
             }
 
             sb.AppendLine("        };");

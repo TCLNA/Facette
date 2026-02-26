@@ -12,6 +12,12 @@ namespace Facette.Generator.Builders
 
             foreach (var prop in properties)
             {
+                // Skip Custom-mapped properties — they are user-declared on the target type
+                if (prop.MappingKind == MappingKind.Custom)
+                {
+                    continue;
+                }
+
                 var defaultValue = prop.IsValueType ? "" : " = default!;";
                 sb.AppendLine("    public " + prop.TypeFullName + " " + prop.Name + " { get; init; }" + defaultValue);
             }
