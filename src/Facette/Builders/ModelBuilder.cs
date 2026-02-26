@@ -213,7 +213,7 @@ namespace Facette.Generator.Builders
                     var typeDisplay = prop.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
                     var isValueType = prop.Type.IsValueType;
 
-                    builder.Add(new PropertyModel(prop.Name, typeDisplay, isValueType));
+                    builder.Add(PropertyModel.Direct(prop.Name, typeDisplay, isValueType));
                 }
 
                 current = current.BaseType;
