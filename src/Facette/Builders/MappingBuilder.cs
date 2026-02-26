@@ -21,9 +21,24 @@ namespace Facette.Generator.Builders
             for (int i = 0; i < properties.Length; i++)
             {
                 var prop = properties[i];
-                var sourceName = prop.MappingKind == MappingKind.Custom ? prop.SourcePropertyName : prop.Name;
                 var comma = i < properties.Length - 1 ? "," : "";
-                sb.AppendLine("            " + prop.Name + " = source." + sourceName + comma);
+
+                if (prop.MappingKind == MappingKind.Nested)
+                {
+                    if (prop.IsNullable)
+                    {
+                        sb.AppendLine("            " + prop.Name + " = source." + prop.Name + " != null ? " + prop.NestedDtoTypeFullName + ".FromSource(source." + prop.Name + ") : null" + comma);
+                    }
+                    else
+                    {
+                        sb.AppendLine("            " + prop.Name + " = " + prop.NestedDtoTypeFullName + ".FromSource(source." + prop.Name + ")" + comma);
+                    }
+                }
+                else
+                {
+                    var sourceName = prop.MappingKind == MappingKind.Custom ? prop.SourcePropertyName : prop.Name;
+                    sb.AppendLine("            " + prop.Name + " = source." + sourceName + comma);
+                }
             }
 
             sb.AppendLine("        };");
@@ -46,9 +61,24 @@ namespace Facette.Generator.Builders
             for (int i = 0; i < properties.Length; i++)
             {
                 var prop = properties[i];
-                var targetName = prop.MappingKind == MappingKind.Custom ? prop.SourcePropertyName : prop.Name;
                 var comma = i < properties.Length - 1 ? "," : "";
-                sb.AppendLine("            " + targetName + " = this." + prop.Name + comma);
+
+                if (prop.MappingKind == MappingKind.Nested)
+                {
+                    if (prop.IsNullable)
+                    {
+                        sb.AppendLine("            " + prop.Name + " = this." + prop.Name + " != null ? this." + prop.Name + ".ToSource() : null" + comma);
+                    }
+                    else
+                    {
+                        sb.AppendLine("            " + prop.Name + " = this." + prop.Name + ".ToSource()" + comma);
+                    }
+                }
+                else
+                {
+                    var targetName = prop.MappingKind == MappingKind.Custom ? prop.SourcePropertyName : prop.Name;
+                    sb.AppendLine("            " + targetName + " = this." + prop.Name + comma);
+                }
             }
 
             sb.AppendLine("        };");

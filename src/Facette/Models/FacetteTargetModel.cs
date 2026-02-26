@@ -151,7 +151,8 @@ namespace Facette.Generator.Models
             string nestedDtoTypeFullName,
             string collectionElementTypeFullName,
             bool isNullable,
-            bool isArray)
+            bool isArray,
+            ImmutableArray<PropertyModel> nestedProperties)
         {
             Name = name;
             TypeFullName = typeFullName;
@@ -163,6 +164,7 @@ namespace Facette.Generator.Models
             CollectionElementTypeFullName = collectionElementTypeFullName;
             IsNullable = isNullable;
             IsArray = isArray;
+            NestedProperties = nestedProperties;
         }
 
         public string Name { get; }
@@ -175,27 +177,35 @@ namespace Facette.Generator.Models
         public string CollectionElementTypeFullName { get; }
         public bool IsNullable { get; }
         public bool IsArray { get; }
+        public ImmutableArray<PropertyModel> NestedProperties { get; }
 
         public static PropertyModel Direct(string name, string typeFullName, bool isValueType)
         {
             return new PropertyModel(
                 name, typeFullName, isValueType,
-                MappingKind.Direct, name, "", "", "", false, false);
+                MappingKind.Direct, name, "", "", "", false, false,
+                ImmutableArray<PropertyModel>.Empty);
         }
 
         public bool Equals(PropertyModel other)
         {
             if (other == null) return false;
-            return Name == other.Name
-                && TypeFullName == other.TypeFullName
-                && IsValueType == other.IsValueType
-                && MappingKind == other.MappingKind
-                && SourcePropertyName == other.SourcePropertyName
-                && NestedDtoTypeName == other.NestedDtoTypeName
-                && NestedDtoTypeFullName == other.NestedDtoTypeFullName
-                && CollectionElementTypeFullName == other.CollectionElementTypeFullName
-                && IsNullable == other.IsNullable
-                && IsArray == other.IsArray;
+            if (Name != other.Name) return false;
+            if (TypeFullName != other.TypeFullName) return false;
+            if (IsValueType != other.IsValueType) return false;
+            if (MappingKind != other.MappingKind) return false;
+            if (SourcePropertyName != other.SourcePropertyName) return false;
+            if (NestedDtoTypeName != other.NestedDtoTypeName) return false;
+            if (NestedDtoTypeFullName != other.NestedDtoTypeFullName) return false;
+            if (CollectionElementTypeFullName != other.CollectionElementTypeFullName) return false;
+            if (IsNullable != other.IsNullable) return false;
+            if (IsArray != other.IsArray) return false;
+            if (NestedProperties.Length != other.NestedProperties.Length) return false;
+            for (int i = 0; i < NestedProperties.Length; i++)
+            {
+                if (!NestedProperties[i].Equals(other.NestedProperties[i])) return false;
+            }
+            return true;
         }
 
         public override bool Equals(object obj)
@@ -218,6 +228,7 @@ namespace Facette.Generator.Models
                 hash = hash * 31 + (CollectionElementTypeFullName != null ? CollectionElementTypeFullName.GetHashCode() : 0);
                 hash = hash * 31 + IsNullable.GetHashCode();
                 hash = hash * 31 + IsArray.GetHashCode();
+                hash = hash * 31 + NestedProperties.Length.GetHashCode();
                 return hash;
             }
         }

@@ -18,7 +18,7 @@ namespace Facette.Generator.Builders
                     continue;
                 }
 
-                var defaultValue = prop.IsValueType ? "" : " = default!;";
+                var defaultValue = prop.IsValueType || prop.IsNullable ? "" : " = default!;";
                 sb.AppendLine("    public " + prop.TypeFullName + " " + prop.Name + " { get; init; }" + defaultValue);
             }
 

@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Collections.Immutable;
+using System.Linq;
 using Facette.Generator.Diagnostics;
 using Facette.Generator.Models;
 using Microsoft.CodeAnalysis;
@@ -77,7 +78,7 @@ namespace Facette.Generator.Builders
             }
 
             // Extract Include named argument
-            HashSet<string>? include = null;
+            HashSet<string> include = null;
             bool hasInclude = false;
             foreach (var arg in attribute.NamedArguments)
             {
@@ -142,8 +143,12 @@ namespace Facette.Generator.Builders
             bool generateProjection = GetNamedBoolArg(attribute, "GenerateProjection", true);
             bool generateMapper = GetNamedBoolArg(attribute, "GenerateMapper", true);
 
+            // Build Facette lookup: scan all types in the compilation for [Facette] attributes
+            var compilation = context.SemanticModel.Compilation;
+            var facetteLookup = BuildFacetteLookup(compilation);
+
             // Collect properties from source type
-            var autoProperties = GetSourceProperties(sourceType, exclude, include);
+            var autoProperties = GetSourceProperties(sourceType, exclude, include, facetteLookup, compilation);
 
             // Scan user-declared properties on the target type for [MapFrom] attributes
             var userDeclaredNames = new HashSet<string>();
@@ -215,7 +220,8 @@ namespace Facette.Generator.Builders
                     "",
                     "",
                     false,
-                    false));
+                    false,
+                    ImmutableArray<PropertyModel>.Empty));
             }
 
             // Filter auto-generated properties — remove any whose name matches a user-declared property
@@ -252,10 +258,118 @@ namespace Facette.Generator.Builders
             );
         }
 
+        private static Dictionary<string, FacetteDtoInfo> BuildFacetteLookup(Compilation compilation)
+        {
+            var lookup = new Dictionary<string, FacetteDtoInfo>();
+
+            foreach (var tree in compilation.SyntaxTrees)
+            {
+                var semanticModel = compilation.GetSemanticModel(tree);
+                var root = tree.GetRoot();
+
+                foreach (var typeDecl in root.DescendantNodes().OfType<TypeDeclarationSyntax>())
+                {
+                    var typeSymbol = semanticModel.GetDeclaredSymbol(typeDecl) as INamedTypeSymbol;
+                    if (typeSymbol == null)
+                    {
+                        continue;
+                    }
+
+                    foreach (var attrData in typeSymbol.GetAttributes())
+                    {
+                        if (attrData.AttributeClass == null)
+                        {
+                            continue;
+                        }
+
+                        if (attrData.AttributeClass.ToDisplayString() != "Facette.Abstractions.FacetteAttribute")
+                        {
+                            continue;
+                        }
+
+                        if (attrData.ConstructorArguments.Length == 0)
+                        {
+                            continue;
+                        }
+
+                        var srcType = attrData.ConstructorArguments[0].Value as INamedTypeSymbol;
+                        if (srcType == null || srcType.TypeKind == TypeKind.Error)
+                        {
+                            continue;
+                        }
+
+                        var sourceFullName = srcType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+                        var dtoTypeName = typeSymbol.Name;
+                        var dtoTypeFullName = typeSymbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+
+                        // Collect the source type's public properties for inlining in projections
+                        var nestedProps = GetSimpleSourceProperties(srcType);
+
+                        lookup[sourceFullName] = new FacetteDtoInfo(dtoTypeName, dtoTypeFullName, nestedProps);
+                    }
+                }
+            }
+
+            return lookup;
+        }
+
+        /// <summary>
+        /// Gets simple Direct properties from a source type (for nested property inlining).
+        /// Does not recurse into further nested DTOs.
+        /// </summary>
+        private static ImmutableArray<PropertyModel> GetSimpleSourceProperties(INamedTypeSymbol sourceType)
+        {
+            var builder = ImmutableArray.CreateBuilder<PropertyModel>();
+            var seen = new HashSet<string>();
+
+            var current = sourceType;
+            while (current != null && current.SpecialType != SpecialType.System_Object)
+            {
+                foreach (var member in current.GetMembers())
+                {
+                    if (!(member is IPropertySymbol prop))
+                    {
+                        continue;
+                    }
+
+                    if (!seen.Add(prop.Name))
+                    {
+                        continue;
+                    }
+
+                    if (prop.DeclaredAccessibility != Accessibility.Public)
+                    {
+                        continue;
+                    }
+
+                    if (prop.IsStatic || prop.IsIndexer)
+                    {
+                        continue;
+                    }
+
+                    if (prop.GetMethod == null)
+                    {
+                        continue;
+                    }
+
+                    var typeDisplay = prop.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+                    var isValueType = prop.Type.IsValueType;
+
+                    builder.Add(PropertyModel.Direct(prop.Name, typeDisplay, isValueType));
+                }
+
+                current = current.BaseType;
+            }
+
+            return builder.ToImmutable();
+        }
+
         private static ImmutableArray<PropertyModel> GetSourceProperties(
             INamedTypeSymbol sourceType,
             HashSet<string> exclude,
-            HashSet<string>? include)
+            HashSet<string> include,
+            Dictionary<string, FacetteDtoInfo> facetteLookup,
+            Compilation compilation)
         {
             var builder = ImmutableArray.CreateBuilder<PropertyModel>();
             var seen = new HashSet<string>();
@@ -301,10 +415,56 @@ namespace Facette.Generator.Builders
                         continue;
                     }
 
-                    var typeDisplay = prop.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
-                    var isValueType = prop.Type.IsValueType;
+                    // Determine nullability and unwrap the underlying type
+                    var propType = prop.Type;
+                    bool isNullable = false;
 
-                    builder.Add(PropertyModel.Direct(prop.Name, typeDisplay, isValueType));
+                    // Check for Nullable<T> value types
+                    if (propType is INamedTypeSymbol namedType
+                        && namedType.OriginalDefinition.SpecialType == SpecialType.System_Nullable_T)
+                    {
+                        isNullable = true;
+                        propType = namedType.TypeArguments[0];
+                    }
+                    // Check for nullable reference types
+                    else if (prop.NullableAnnotation == NullableAnnotation.Annotated)
+                    {
+                        isNullable = true;
+                    }
+
+                    // Check if the (unwrapped) property type has a corresponding Facette DTO
+                    var unwrappedFullName = propType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+
+                    FacetteDtoInfo dtoInfo;
+                    if (facetteLookup.TryGetValue(unwrappedFullName, out dtoInfo))
+                    {
+                        // This is a nested DTO property
+                        var dtoTypeForProperty = dtoInfo.DtoTypeFullName;
+                        if (isNullable)
+                        {
+                            dtoTypeForProperty = dtoTypeForProperty + "?";
+                        }
+
+                        builder.Add(new PropertyModel(
+                            prop.Name,
+                            dtoTypeForProperty,
+                            false, // DTOs (records) are reference types
+                            MappingKind.Nested,
+                            prop.Name,
+                            dtoInfo.DtoTypeName,
+                            dtoInfo.DtoTypeFullName,
+                            "",
+                            isNullable,
+                            false,
+                            dtoInfo.NestedProperties));
+                    }
+                    else
+                    {
+                        var typeDisplay = prop.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+                        var isValueType = prop.Type.IsValueType;
+
+                        builder.Add(PropertyModel.Direct(prop.Name, typeDisplay, isValueType));
+                    }
                 }
 
                 current = current.BaseType;
@@ -372,6 +532,23 @@ namespace Facette.Generator.Builders
             }
 
             return defaultValue;
+        }
+
+        /// <summary>
+        /// Holds information about a discovered Facette DTO for nested mapping.
+        /// </summary>
+        private sealed class FacetteDtoInfo
+        {
+            public FacetteDtoInfo(string dtoTypeName, string dtoTypeFullName, ImmutableArray<PropertyModel> nestedProperties)
+            {
+                DtoTypeName = dtoTypeName;
+                DtoTypeFullName = dtoTypeFullName;
+                NestedProperties = nestedProperties;
+            }
+
+            public string DtoTypeName { get; }
+            public string DtoTypeFullName { get; }
+            public ImmutableArray<PropertyModel> NestedProperties { get; }
         }
     }
 }
