@@ -33,7 +33,7 @@ public class User
 }
 
 // Declare a DTO - generator fills in properties + mapping
-[Facette(typeof(User), exclude: nameof(User.PasswordHash))]
+[Facette(typeof(User), exclude: [nameof(User.PasswordHash)])]
 public partial record UserDto;
 ```
 
@@ -64,7 +64,7 @@ public sealed class FacetteAttribute : Attribute
 ### Input
 
 ```csharp
-[Facette(typeof(User), exclude: nameof(User.PasswordHash))]
+[Facette(typeof(User), exclude: [nameof(User.PasswordHash)])]
 public partial record UserDto;
 ```
 

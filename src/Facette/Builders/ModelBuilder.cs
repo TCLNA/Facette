@@ -1,10 +1,10 @@
-#pragma warning disable CS8600, CS8604 // Null reference warnings suppressed: values are guaranteed non-null by attribute shape
-
 using System.Collections.Generic;
 using System.Collections.Immutable;
 using Facette.Generator.Diagnostics;
 using Facette.Generator.Models;
 using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
 
 namespace Facette.Generator.Builders
 {
@@ -19,10 +19,46 @@ namespace Facette.Generator.Builders
             var textSpan = locationObj.SourceSpan;
             var lineSpan = locationObj.GetLineSpan().Span;
 
+            // FCT001: Type must be partial
+            if (context.TargetNode is TypeDeclarationSyntax typeDecl
+                && !typeDecl.Modifiers.Any(SyntaxKind.PartialKeyword))
+            {
+                diagnosticsBuilder.Add(new DiagnosticInfo(
+                    DiagnosticDescriptors.FCT001_TypeMustBePartial,
+                    filePath,
+                    textSpan,
+                    lineSpan,
+                    new object[] { targetSymbol.Name }));
+            }
+
             var attribute = context.Attributes[0];
 
-            // Extract source type
-            var sourceType = (INamedTypeSymbol)attribute.ConstructorArguments[0].Value;
+            // Extract source type (defensive: null/error type if typeof() can't resolve)
+            var sourceTypeValue = attribute.ConstructorArguments.Length > 0
+                ? attribute.ConstructorArguments[0].Value as INamedTypeSymbol
+                : null;
+
+            if (sourceTypeValue == null || sourceTypeValue.TypeKind == TypeKind.Error)
+            {
+                diagnosticsBuilder.Add(new DiagnosticInfo(
+                    DiagnosticDescriptors.FCT003_SourceTypeNotFound,
+                    filePath,
+                    textSpan,
+                    lineSpan,
+                    new object[] { targetSymbol.Name }));
+
+                return new FacetteTargetModel(
+                    "",
+                    targetSymbol.Name,
+                    "",
+                    ImmutableArray<PropertyModel>.Empty,
+                    false,
+                    false,
+                    false,
+                    diagnosticsBuilder.ToImmutable());
+            }
+
+            var sourceType = sourceTypeValue;
 
             // Extract exclude list from params
             var exclude = new HashSet<string>();
@@ -41,7 +77,7 @@ namespace Facette.Generator.Builders
             }
 
             // Extract Include named argument
-            HashSet<string> include = null;
+            HashSet<string>? include = null;
             bool hasInclude = false;
             foreach (var arg in attribute.NamedArguments)
             {
@@ -68,6 +104,37 @@ namespace Facette.Generator.Builders
                     textSpan,
                     lineSpan,
                     new object[] { targetSymbol.Name }));
+            }
+
+            // FCT004: Validate Include/Exclude property names exist on source type
+            var sourcePropertyNames = GetSourcePropertyNames(sourceType);
+            foreach (var name in exclude)
+            {
+                if (!sourcePropertyNames.Contains(name))
+                {
+                    diagnosticsBuilder.Add(new DiagnosticInfo(
+                        DiagnosticDescriptors.FCT004_PropertyNotFound,
+                        filePath,
+                        textSpan,
+                        lineSpan,
+                        new object[] { name, sourceType.Name }));
+                }
+            }
+
+            if (include != null)
+            {
+                foreach (var name in include)
+                {
+                    if (!sourcePropertyNames.Contains(name))
+                    {
+                        diagnosticsBuilder.Add(new DiagnosticInfo(
+                            DiagnosticDescriptors.FCT004_PropertyNotFound,
+                            filePath,
+                            textSpan,
+                            lineSpan,
+                            new object[] { name, sourceType.Name }));
+                    }
+                }
             }
 
             // Extract generation flags
@@ -97,7 +164,7 @@ namespace Facette.Generator.Builders
         private static ImmutableArray<PropertyModel> GetSourceProperties(
             INamedTypeSymbol sourceType,
             HashSet<string> exclude,
-            HashSet<string> include)
+            HashSet<string>? include)
         {
             var builder = ImmutableArray.CreateBuilder<PropertyModel>();
             var seen = new HashSet<string>();
@@ -153,6 +220,30 @@ namespace Facette.Generator.Builders
             }
 
             return builder.ToImmutable();
+        }
+
+        private static HashSet<string> GetSourcePropertyNames(INamedTypeSymbol sourceType)
+        {
+            var names = new HashSet<string>();
+            var current = sourceType;
+            while (current != null && current.SpecialType != SpecialType.System_Object)
+            {
+                foreach (var member in current.GetMembers())
+                {
+                    if (member is IPropertySymbol prop
+                        && prop.DeclaredAccessibility == Accessibility.Public
+                        && !prop.IsStatic
+                        && !prop.IsIndexer
+                        && prop.GetMethod != null)
+                    {
+                        names.Add(prop.Name);
+                    }
+                }
+
+                current = current.BaseType;
+            }
+
+            return names;
         }
 
         private static bool GetNamedBoolArg(AttributeData attribute, string name, bool defaultValue)
