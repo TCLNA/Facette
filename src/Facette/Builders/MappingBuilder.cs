@@ -23,7 +23,32 @@ namespace Facette.Generator.Builders
                 var prop = properties[i];
                 var comma = i < properties.Length - 1 ? "," : "";
 
-                if (prop.MappingKind == MappingKind.Nested)
+                if (prop.MappingKind == MappingKind.Collection)
+                {
+                    var collSourceName = prop.SourcePropertyName;
+                    var toMethod = prop.IsArray ? ".ToArray()" : ".ToList()";
+                    string collExpr;
+                    if (!string.IsNullOrEmpty(prop.NestedDtoTypeFullName))
+                    {
+                        collExpr = "source." + collSourceName + ".Select(x => " + prop.NestedDtoTypeFullName + ".FromSource(x))" + toMethod;
+                    }
+                    else
+                    {
+                        collExpr = "source." + collSourceName + toMethod;
+                    }
+
+                    string assignment;
+                    if (prop.IsNullable)
+                    {
+                        assignment = prop.Name + " = source." + collSourceName + " != null ? " + collExpr + " : null";
+                    }
+                    else
+                    {
+                        assignment = prop.Name + " = " + collExpr;
+                    }
+                    sb.AppendLine("            " + assignment + comma);
+                }
+                else if (prop.MappingKind == MappingKind.Nested)
                 {
                     if (prop.IsNullable)
                     {
@@ -63,7 +88,32 @@ namespace Facette.Generator.Builders
                 var prop = properties[i];
                 var comma = i < properties.Length - 1 ? "," : "";
 
-                if (prop.MappingKind == MappingKind.Nested)
+                if (prop.MappingKind == MappingKind.Collection)
+                {
+                    var collTarget = prop.SourcePropertyName;
+                    var toMethodR = prop.IsArray ? ".ToArray()" : ".ToList()";
+                    string collExprR;
+                    if (!string.IsNullOrEmpty(prop.NestedDtoTypeFullName))
+                    {
+                        collExprR = "this." + prop.Name + ".Select(x => x.ToSource())" + toMethodR;
+                    }
+                    else
+                    {
+                        collExprR = "this." + prop.Name + toMethodR;
+                    }
+
+                    string assignment;
+                    if (prop.IsNullable)
+                    {
+                        assignment = collTarget + " = this." + prop.Name + " != null ? " + collExprR + " : null";
+                    }
+                    else
+                    {
+                        assignment = collTarget + " = " + collExprR;
+                    }
+                    sb.AppendLine("            " + assignment + comma);
+                }
+                else if (prop.MappingKind == MappingKind.Nested)
                 {
                     if (prop.IsNullable)
                     {

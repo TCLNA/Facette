@@ -432,6 +432,88 @@ namespace Facette.Generator.Builders
                         isNullable = true;
                     }
 
+                    // Check if the property is a collection type
+                    ITypeSymbol collectionElementType = null;
+                    bool isArray = false;
+
+                    if (prop.Type.TypeKind == TypeKind.Array)
+                    {
+                        isArray = true;
+                        collectionElementType = ((IArrayTypeSymbol)prop.Type).ElementType;
+                    }
+                    else if (prop.Type.SpecialType != SpecialType.System_String)
+                    {
+                        // Check AllInterfaces for IEnumerable<T>
+                        foreach (var iface in prop.Type.AllInterfaces)
+                        {
+                            if (iface.OriginalDefinition.SpecialType == SpecialType.System_Collections_Generic_IEnumerable_T
+                                && iface.TypeArguments.Length == 1)
+                            {
+                                collectionElementType = iface.TypeArguments[0];
+                                break;
+                            }
+                        }
+                    }
+
+                    if (collectionElementType != null)
+                    {
+                        // This is a collection property
+                        var elementFullName = collectionElementType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+
+                        // Check if the element type has a Facette DTO
+                        FacetteDtoInfo elementDtoInfo;
+                        string dtoElementType;
+                        string nestedDtoTypeName;
+                        string nestedDtoTypeFullName;
+                        ImmutableArray<PropertyModel> nestedProps;
+
+                        if (facetteLookup.TryGetValue(elementFullName, out elementDtoInfo))
+                        {
+                            dtoElementType = elementDtoInfo.DtoTypeFullName;
+                            nestedDtoTypeName = elementDtoInfo.DtoTypeName;
+                            nestedDtoTypeFullName = elementDtoInfo.DtoTypeFullName;
+                            nestedProps = elementDtoInfo.NestedProperties;
+                        }
+                        else
+                        {
+                            dtoElementType = elementFullName;
+                            nestedDtoTypeName = "";
+                            nestedDtoTypeFullName = "";
+                            nestedProps = ImmutableArray<PropertyModel>.Empty;
+                        }
+
+                        // Build the DTO type name for the property
+                        string collectionTypeName;
+                        if (isArray)
+                        {
+                            collectionTypeName = dtoElementType + "[]";
+                        }
+                        else
+                        {
+                            collectionTypeName = "global::System.Collections.Generic.List<" + dtoElementType + ">";
+                        }
+
+                        if (isNullable)
+                        {
+                            collectionTypeName = collectionTypeName + "?";
+                        }
+
+                        builder.Add(new PropertyModel(
+                            prop.Name,
+                            collectionTypeName,
+                            false, // collections are reference types
+                            MappingKind.Collection,
+                            prop.Name,
+                            nestedDtoTypeName,
+                            nestedDtoTypeFullName,
+                            elementFullName,
+                            isNullable,
+                            isArray,
+                            nestedProps));
+
+                        continue;
+                    }
+
                     // Check if the (unwrapped) property type has a corresponding Facette DTO
                     var unwrappedFullName = propType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
 
