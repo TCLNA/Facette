@@ -2,6 +2,7 @@
 
 using System.Collections.Generic;
 using System.Collections.Immutable;
+using Facette.Generator.Diagnostics;
 using Facette.Generator.Models;
 using Microsoft.CodeAnalysis;
 
@@ -12,6 +13,8 @@ namespace Facette.Generator.Builders
         public static FacetteTargetModel Build(GeneratorAttributeSyntaxContext context)
         {
             var targetSymbol = (INamedTypeSymbol)context.TargetSymbol;
+            var diagnosticsBuilder = ImmutableArray.CreateBuilder<DiagnosticInfo>();
+            var location = context.TargetNode.GetLocation();
 
             var attribute = context.Attributes[0];
 
@@ -20,6 +23,7 @@ namespace Facette.Generator.Builders
 
             // Extract exclude list from params
             var exclude = new HashSet<string>();
+            bool hasExclude = false;
             if (attribute.ConstructorArguments.Length > 1 &&
                 attribute.ConstructorArguments[1].Kind == TypedConstantKind.Array)
             {
@@ -28,12 +32,14 @@ namespace Facette.Generator.Builders
                     if (val.Value is string s)
                     {
                         exclude.Add(s);
+                        hasExclude = true;
                     }
                 }
             }
 
             // Extract Include named argument
             HashSet<string> include = null;
+            bool hasInclude = false;
             foreach (var arg in attribute.NamedArguments)
             {
                 if (arg.Key == "Include" && arg.Value.Kind == TypedConstantKind.Array)
@@ -44,9 +50,19 @@ namespace Facette.Generator.Builders
                         if (val.Value is string s)
                         {
                             include.Add(s);
+                            hasInclude = true;
                         }
                     }
                 }
+            }
+
+            // FCT002: Include and Exclude cannot both be specified
+            if (hasExclude && hasInclude)
+            {
+                diagnosticsBuilder.Add(new DiagnosticInfo(
+                    DiagnosticDescriptors.FCT002_IncludeExcludeConflict,
+                    location,
+                    new object[] { targetSymbol.Name }));
             }
 
             // Extract generation flags
@@ -68,7 +84,8 @@ namespace Facette.Generator.Builders
                 properties,
                 generateToSource,
                 generateProjection,
-                generateMapper
+                generateMapper,
+                diagnosticsBuilder.ToImmutable()
             );
         }
 

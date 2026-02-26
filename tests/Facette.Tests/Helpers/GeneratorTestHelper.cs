@@ -60,8 +60,12 @@ public static class GeneratorTestHelper
             compilation, out var outputCompilation, out var diagnostics);
 
         var result = driver.GetRunResult();
-        var allDiagnostics = outputCompilation.GetDiagnostics()
+
+        // Generator-reported diagnostics appear in the run result, not compilation diagnostics
+        var allDiagnostics = result.Diagnostics
             .Where(d => d.Id.StartsWith("FCT"))
+            .Concat(outputCompilation.GetDiagnostics()
+                .Where(d => d.Id.StartsWith("FCT")))
             .ToList();
 
         return (result, allDiagnostics);

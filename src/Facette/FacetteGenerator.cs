@@ -22,6 +22,27 @@ namespace Facette.Generator
                     return;
                 }
 
+                // Report any diagnostics collected during model building
+                bool hasErrors = false;
+                foreach (var diag in model.Diagnostics)
+                {
+                    spc.ReportDiagnostic(Diagnostic.Create(
+                        diag.Descriptor,
+                        diag.Location,
+                        diag.MessageArgs));
+
+                    if (diag.Descriptor.DefaultSeverity == DiagnosticSeverity.Error)
+                    {
+                        hasErrors = true;
+                    }
+                }
+
+                // Don't generate code if there are errors
+                if (hasErrors)
+                {
+                    return;
+                }
+
                 EmitDtoSource(spc, model);
 
                 if (model.GenerateMapper)
