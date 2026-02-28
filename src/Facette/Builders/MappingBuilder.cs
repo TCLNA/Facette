@@ -23,7 +23,12 @@ namespace Facette.Generator.Builders
                 var prop = properties[i];
                 var comma = i < properties.Length - 1 ? "," : "";
 
-                if (prop.MappingKind == MappingKind.Collection)
+                if (prop.MappingKind == MappingKind.Flattened)
+                {
+                    var flatExpr = ProjectionBuilder.BuildFlattenedExpression("source", prop);
+                    sb.AppendLine("            " + prop.Name + " = " + flatExpr + comma);
+                }
+                else if (prop.MappingKind == MappingKind.Collection)
                 {
                     var collSourceName = prop.SourcePropertyName;
                     var toMethod = prop.IsArray ? ".ToArray()" : ".ToList()";
@@ -62,7 +67,15 @@ namespace Facette.Generator.Builders
                 else
                 {
                     var sourceName = prop.MappingKind == MappingKind.Custom ? prop.SourcePropertyName : prop.Name;
-                    sb.AppendLine("            " + prop.Name + " = source." + sourceName + comma);
+                    var convertMethod = prop.ConvertMethod;
+                    if (!string.IsNullOrEmpty(convertMethod))
+                    {
+                        sb.AppendLine("            " + prop.Name + " = " + prop.ConvertContainingType + "." + convertMethod + "(source." + sourceName + ")" + comma);
+                    }
+                    else
+                    {
+                        sb.AppendLine("            " + prop.Name + " = source." + sourceName + comma);
+                    }
                 }
             }
 
@@ -76,6 +89,19 @@ namespace Facette.Generator.Builders
             string sourceTypeFullName,
             ImmutableArray<PropertyModel> properties)
         {
+            // Filter out properties that can't be mapped back (Flattened, or Custom with Convert but no ConvertBack)
+            var mappableProperties = ImmutableArray.CreateBuilder<PropertyModel>();
+            foreach (var prop in properties)
+            {
+                if (prop.MappingKind == MappingKind.Flattened)
+                    continue;
+                if (!string.IsNullOrEmpty(prop.ConvertMethod) && string.IsNullOrEmpty(prop.ConvertBackMethod))
+                    continue;
+                mappableProperties.Add(prop);
+            }
+
+            var toSourceProps = mappableProperties.ToImmutable();
+
             var sb = new StringBuilder();
 
             sb.AppendLine("    public " + sourceTypeFullName + " ToSource()");
@@ -83,10 +109,10 @@ namespace Facette.Generator.Builders
             sb.AppendLine("        return new " + sourceTypeFullName);
             sb.AppendLine("        {");
 
-            for (int i = 0; i < properties.Length; i++)
+            for (int i = 0; i < toSourceProps.Length; i++)
             {
-                var prop = properties[i];
-                var comma = i < properties.Length - 1 ? "," : "";
+                var prop = toSourceProps[i];
+                var comma = i < toSourceProps.Length - 1 ? "," : "";
 
                 if (prop.MappingKind == MappingKind.Collection)
                 {
@@ -127,7 +153,15 @@ namespace Facette.Generator.Builders
                 else
                 {
                     var targetName = prop.MappingKind == MappingKind.Custom ? prop.SourcePropertyName : prop.Name;
-                    sb.AppendLine("            " + targetName + " = this." + prop.Name + comma);
+                    var convertBackMethod = prop.ConvertBackMethod;
+                    if (!string.IsNullOrEmpty(convertBackMethod))
+                    {
+                        sb.AppendLine("            " + targetName + " = " + prop.ConvertContainingType + "." + convertBackMethod + "(this." + prop.Name + ")" + comma);
+                    }
+                    else
+                    {
+                        sb.AppendLine("            " + targetName + " = this." + prop.Name + comma);
+                    }
                 }
             }
 

@@ -8,5 +8,12 @@ public sealed class MapFromAttribute : Attribute
         SourcePropertyName = sourcePropertyName;
     }
 
-    public string SourcePropertyName { get; }
+    public MapFromAttribute()
+    {
+        SourcePropertyName = null;
+    }
+
+    public string? SourcePropertyName { get; }
+    public string? Convert { get; set; }
+    public string? ConvertBack { get; set; }
 }

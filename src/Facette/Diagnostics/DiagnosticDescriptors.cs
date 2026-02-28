@@ -43,5 +43,37 @@ namespace Facette.Generator.Diagnostics
             category: "Facette",
             defaultSeverity: DiagnosticSeverity.Warning,
             isEnabledByDefault: true);
+
+        public static readonly DiagnosticDescriptor FCT006_CircularReference = new DiagnosticDescriptor(
+            id: "FCT006",
+            title: "Circular reference detected",
+            messageFormat: "Circular reference detected in nested DTO chain involving source type '{0}'",
+            category: "Facette",
+            defaultSeverity: DiagnosticSeverity.Warning,
+            isEnabledByDefault: true);
+
+        public static readonly DiagnosticDescriptor FCT007_FlattenedPathSegmentNotFound = new DiagnosticDescriptor(
+            id: "FCT007",
+            title: "Flattened path segment not found",
+            messageFormat: "Path segment '{0}' in flattened path for property '{1}' was not found on type '{2}'",
+            category: "Facette",
+            defaultSeverity: DiagnosticSeverity.Warning,
+            isEnabledByDefault: true);
+
+        public static readonly DiagnosticDescriptor FCT008_ConvertMethodNotFound = new DiagnosticDescriptor(
+            id: "FCT008",
+            title: "Convert method not found",
+            messageFormat: "Convert method '{0}' specified on property '{1}' was not found as a static method on type '{2}'",
+            category: "Facette",
+            defaultSeverity: DiagnosticSeverity.Warning,
+            isEnabledByDefault: true);
+
+        public static readonly DiagnosticDescriptor FCT009_ConvertBackMethodNotFound = new DiagnosticDescriptor(
+            id: "FCT009",
+            title: "ConvertBack method not found",
+            messageFormat: "ConvertBack method '{0}' specified on property '{1}' was not found as a static method on type '{2}'",
+            category: "Facette",
+            defaultSeverity: DiagnosticSeverity.Warning,
+            isEnabledByDefault: true);
     }
 }

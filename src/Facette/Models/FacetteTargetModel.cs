@@ -136,7 +136,8 @@ namespace Facette.Generator.Models
         Direct,
         Custom,
         Nested,
-        Collection
+        Collection,
+        Flattened
     }
 
     public sealed class PropertyModel : IEquatable<PropertyModel>
@@ -152,7 +153,12 @@ namespace Facette.Generator.Models
             string collectionElementTypeFullName,
             bool isNullable,
             bool isArray,
-            ImmutableArray<PropertyModel> nestedProperties)
+            ImmutableArray<PropertyModel> nestedProperties,
+            string flattenedPath = "",
+            bool flattenedPathHasNullableSegment = false,
+            string convertMethod = "",
+            string convertBackMethod = "",
+            string convertContainingType = "")
         {
             Name = name;
             TypeFullName = typeFullName;
@@ -165,6 +171,11 @@ namespace Facette.Generator.Models
             IsNullable = isNullable;
             IsArray = isArray;
             NestedProperties = nestedProperties;
+            FlattenedPath = flattenedPath ?? "";
+            FlattenedPathHasNullableSegment = flattenedPathHasNullableSegment;
+            ConvertMethod = convertMethod ?? "";
+            ConvertBackMethod = convertBackMethod ?? "";
+            ConvertContainingType = convertContainingType ?? "";
         }
 
         public string Name { get; }
@@ -178,6 +189,11 @@ namespace Facette.Generator.Models
         public bool IsNullable { get; }
         public bool IsArray { get; }
         public ImmutableArray<PropertyModel> NestedProperties { get; }
+        public string FlattenedPath { get; }
+        public bool FlattenedPathHasNullableSegment { get; }
+        public string ConvertMethod { get; }
+        public string ConvertBackMethod { get; }
+        public string ConvertContainingType { get; }
 
         public static PropertyModel Direct(string name, string typeFullName, bool isValueType)
         {
@@ -200,6 +216,11 @@ namespace Facette.Generator.Models
             if (CollectionElementTypeFullName != other.CollectionElementTypeFullName) return false;
             if (IsNullable != other.IsNullable) return false;
             if (IsArray != other.IsArray) return false;
+            if (FlattenedPath != other.FlattenedPath) return false;
+            if (FlattenedPathHasNullableSegment != other.FlattenedPathHasNullableSegment) return false;
+            if (ConvertMethod != other.ConvertMethod) return false;
+            if (ConvertBackMethod != other.ConvertBackMethod) return false;
+            if (ConvertContainingType != other.ConvertContainingType) return false;
             if (NestedProperties.Length != other.NestedProperties.Length) return false;
             for (int i = 0; i < NestedProperties.Length; i++)
             {
@@ -228,6 +249,11 @@ namespace Facette.Generator.Models
                 hash = hash * 31 + (CollectionElementTypeFullName != null ? CollectionElementTypeFullName.GetHashCode() : 0);
                 hash = hash * 31 + IsNullable.GetHashCode();
                 hash = hash * 31 + IsArray.GetHashCode();
+                hash = hash * 31 + (FlattenedPath != null ? FlattenedPath.GetHashCode() : 0);
+                hash = hash * 31 + FlattenedPathHasNullableSegment.GetHashCode();
+                hash = hash * 31 + (ConvertMethod != null ? ConvertMethod.GetHashCode() : 0);
+                hash = hash * 31 + (ConvertBackMethod != null ? ConvertBackMethod.GetHashCode() : 0);
+                hash = hash * 31 + (ConvertContainingType != null ? ConvertContainingType.GetHashCode() : 0);
                 hash = hash * 31 + NestedProperties.Length.GetHashCode();
                 return hash;
             }

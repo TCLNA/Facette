@@ -174,64 +174,198 @@ namespace Facette.Generator.Builders
                 // Track all user-declared property names so they are not re-generated
                 userDeclaredNames.Add(targetProp.Name);
 
-                // Check for [MapFrom] attribute
-                string mapFromSource = null;
+                // Check for [FacetteIgnore] attribute — exclude from mapping entirely
+                bool isIgnored = false;
                 foreach (var attrData in targetProp.GetAttributes())
                 {
                     if (attrData.AttributeClass != null
-                        && attrData.AttributeClass.ToDisplayString() == "Facette.Abstractions.MapFromAttribute"
-                        && attrData.ConstructorArguments.Length > 0
-                        && attrData.ConstructorArguments[0].Value is string srcName)
+                        && attrData.AttributeClass.ToDisplayString() == "Facette.Abstractions.FacetteIgnoreAttribute")
                     {
-                        mapFromSource = srcName;
+                        isIgnored = true;
                         break;
                     }
                 }
 
-                if (mapFromSource == null)
+                if (isIgnored)
                 {
-                    // User-declared property without [MapFrom] — skip entirely
+                    // Property is in userDeclaredNames (prevents auto-gen) but NOT in customMappings (no mapping)
                     continue;
                 }
 
-                // Validate that the source property exists
-                var sourceProp = FindSourceProperty(sourceType, mapFromSource);
-                if (sourceProp == null)
+                // Check for [MapFrom] attribute
+                AttributeData mapFromAttr = null;
+                foreach (var attrData in targetProp.GetAttributes())
                 {
-                    diagnosticsBuilder.Add(new DiagnosticInfo(
-                        DiagnosticDescriptors.FCT005_MapFromPropertyNotFound,
-                        filePath,
-                        textSpan,
-                        lineSpan,
-                        new object[] { targetProp.Name, mapFromSource, sourceType.Name }));
-                    continue;
+                    if (attrData.AttributeClass != null
+                        && attrData.AttributeClass.ToDisplayString() == "Facette.Abstractions.MapFromAttribute")
+                    {
+                        mapFromAttr = attrData;
+                        break;
+                    }
                 }
 
-                var typeDisplay = sourceProp.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
-                var isValueType = sourceProp.Type.IsValueType;
+                if (mapFromAttr != null)
+                {
+                    // Extract source property name from constructor arg (may be null for parameterless ctor)
+                    string mapFromSource = null;
+                    if (mapFromAttr.ConstructorArguments.Length > 0
+                        && mapFromAttr.ConstructorArguments[0].Value is string srcName)
+                    {
+                        mapFromSource = srcName;
+                    }
 
-                customMappings.Add(new PropertyModel(
-                    targetProp.Name,
-                    typeDisplay,
-                    isValueType,
-                    MappingKind.Custom,
-                    mapFromSource,
-                    "",
-                    "",
-                    "",
-                    false,
-                    false,
-                    ImmutableArray<PropertyModel>.Empty));
+                    // Extract Convert/ConvertBack named args
+                    string convertMethod = null;
+                    string convertBackMethod = null;
+                    foreach (var namedArg in mapFromAttr.NamedArguments)
+                    {
+                        if (namedArg.Key == "Convert" && namedArg.Value.Value is string cm)
+                            convertMethod = cm;
+                        else if (namedArg.Key == "ConvertBack" && namedArg.Value.Value is string cbm)
+                            convertBackMethod = cbm;
+                    }
+
+                    // If no source name given (parameterless), use property's own name
+                    if (mapFromSource == null)
+                    {
+                        mapFromSource = targetProp.Name;
+                    }
+
+                    // Check for dot-notation path (e.g., "Address.City")
+                    if (mapFromSource.Contains("."))
+                    {
+                        var resolveResult = ResolvePropertyPath(sourceType, mapFromSource);
+                        if (resolveResult == null)
+                        {
+                            // Find the failing segment for FCT007
+                            var segments = mapFromSource.Split('.');
+                            var walkType = sourceType;
+                            foreach (var seg in segments)
+                            {
+                                var segProp = FindSourceProperty(walkType, seg);
+                                if (segProp == null)
+                                {
+                                    diagnosticsBuilder.Add(new DiagnosticInfo(
+                                        DiagnosticDescriptors.FCT007_FlattenedPathSegmentNotFound,
+                                        filePath, textSpan, lineSpan,
+                                        new object[] { seg, targetProp.Name, walkType.Name }));
+                                    break;
+                                }
+                                walkType = segProp.Type as INamedTypeSymbol;
+                                if (walkType == null) break;
+                            }
+                            continue;
+                        }
+
+                        var flatTypeDisplay = resolveResult.Value.LeafType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+
+                        customMappings.Add(new PropertyModel(
+                            targetProp.Name,
+                            flatTypeDisplay,
+                            resolveResult.Value.LeafType.IsValueType,
+                            MappingKind.Flattened,
+                            targetProp.Name,
+                            "", "", "",
+                            false, false,
+                            ImmutableArray<PropertyModel>.Empty,
+                            flattenedPath: mapFromSource,
+                            flattenedPathHasNullableSegment: resolveResult.Value.HasNullableSegment,
+                            convertMethod: convertMethod ?? "",
+                            convertBackMethod: convertBackMethod ?? "",
+                            convertContainingType: !string.IsNullOrEmpty(convertMethod) ? targetSymbol.Name : ""));
+                    }
+                    else
+                    {
+                        // Simple MapFrom — validate source property exists
+                        var sourceProp = FindSourceProperty(sourceType, mapFromSource);
+                        if (sourceProp == null)
+                        {
+                            diagnosticsBuilder.Add(new DiagnosticInfo(
+                                DiagnosticDescriptors.FCT005_MapFromPropertyNotFound,
+                                filePath, textSpan, lineSpan,
+                                new object[] { targetProp.Name, mapFromSource, sourceType.Name }));
+                            continue;
+                        }
+
+                        // Validate Convert/ConvertBack methods if specified
+                        if (!string.IsNullOrEmpty(convertMethod) && !HasStaticMethod(targetSymbol, convertMethod))
+                        {
+                            diagnosticsBuilder.Add(new DiagnosticInfo(
+                                DiagnosticDescriptors.FCT008_ConvertMethodNotFound,
+                                filePath, textSpan, lineSpan,
+                                new object[] { convertMethod, targetProp.Name, targetSymbol.Name }));
+                            convertMethod = null;
+                        }
+                        if (!string.IsNullOrEmpty(convertBackMethod) && !HasStaticMethod(targetSymbol, convertBackMethod))
+                        {
+                            diagnosticsBuilder.Add(new DiagnosticInfo(
+                                DiagnosticDescriptors.FCT009_ConvertBackMethodNotFound,
+                                filePath, textSpan, lineSpan,
+                                new object[] { convertBackMethod, targetProp.Name, targetSymbol.Name }));
+                            convertBackMethod = null;
+                        }
+
+                        var typeDisplay = targetProp.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+                        var isValueType = targetProp.Type.IsValueType;
+
+                        customMappings.Add(new PropertyModel(
+                            targetProp.Name,
+                            typeDisplay,
+                            isValueType,
+                            MappingKind.Custom,
+                            mapFromSource,
+                            "", "", "",
+                            false, false,
+                            ImmutableArray<PropertyModel>.Empty,
+                            convertMethod: convertMethod ?? "",
+                            convertBackMethod: convertBackMethod ?? "",
+                            convertContainingType: !string.IsNullOrEmpty(convertMethod) ? targetSymbol.Name : ""));
+                    }
+                }
+                else
+                {
+                    // No [MapFrom] — attempt convention-based flattening
+                    var flatResult = TryResolveFlattenedPath(sourceType, targetProp.Name);
+                    if (flatResult != null)
+                    {
+                        var flatTypeDisplay = flatResult.Value.LeafType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+
+                        customMappings.Add(new PropertyModel(
+                            targetProp.Name,
+                            flatTypeDisplay,
+                            flatResult.Value.LeafType.IsValueType,
+                            MappingKind.Flattened,
+                            targetProp.Name,
+                            "", "", "",
+                            false, false,
+                            ImmutableArray<PropertyModel>.Empty,
+                            flattenedPath: flatResult.Value.Path,
+                            flattenedPathHasNullableSegment: flatResult.Value.HasNullableSegment));
+                    }
+                    // else: User-declared property without [MapFrom] and no flattening match — skip entirely
+                }
+            }
+
+            // Collect source property names that are claimed by custom mappings
+            var claimedSourceNames = new HashSet<string>();
+            foreach (var custom in customMappings)
+            {
+                if (custom.MappingKind == MappingKind.Custom && custom.SourcePropertyName != custom.Name)
+                {
+                    claimedSourceNames.Add(custom.SourcePropertyName);
+                }
             }
 
             // Filter auto-generated properties — remove any whose name matches a user-declared property
+            // or whose source property is claimed by a custom mapping
             var filteredBuilder = ImmutableArray.CreateBuilder<PropertyModel>();
             foreach (var prop in autoProperties)
             {
-                if (!userDeclaredNames.Contains(prop.Name))
-                {
-                    filteredBuilder.Add(prop);
-                }
+                if (userDeclaredNames.Contains(prop.Name))
+                    continue;
+                if (claimedSourceNames.Contains(prop.Name))
+                    continue;
+                filteredBuilder.Add(prop);
             }
 
             // Merge: filtered auto-generated + custom mappings
@@ -302,10 +436,7 @@ namespace Facette.Generator.Builders
                         var dtoTypeName = typeSymbol.Name;
                         var dtoTypeFullName = typeSymbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
 
-                        // Collect the source type's public properties for inlining in projections
-                        var nestedProps = GetSimpleSourceProperties(srcType);
-
-                        lookup[sourceFullName] = new FacetteDtoInfo(dtoTypeName, dtoTypeFullName, nestedProps);
+                        lookup[sourceFullName] = new FacetteDtoInfo(dtoTypeName, dtoTypeFullName, srcType);
                     }
                 }
             }
@@ -314,11 +445,21 @@ namespace Facette.Generator.Builders
         }
 
         /// <summary>
-        /// Gets simple Direct properties from a source type (for nested property inlining).
-        /// Does not recurse into further nested DTOs.
+        /// Recursively gets source properties for projection inlining, resolving nested DTOs and collections.
+        /// Uses visited set for cycle detection.
         /// </summary>
-        private static ImmutableArray<PropertyModel> GetSimpleSourceProperties(INamedTypeSymbol sourceType)
+        private static ImmutableArray<PropertyModel> GetNestedSourceProperties(
+            INamedTypeSymbol sourceType,
+            Dictionary<string, FacetteDtoInfo> facetteLookup,
+            HashSet<string> visited)
         {
+            var sourceFullName = sourceType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+            if (!visited.Add(sourceFullName))
+            {
+                // Circular reference — return empty to break the cycle
+                return ImmutableArray<PropertyModel>.Empty;
+            }
+
             var builder = ImmutableArray.CreateBuilder<PropertyModel>();
             var seen = new HashSet<string>();
 
@@ -352,15 +493,94 @@ namespace Facette.Generator.Builders
                         continue;
                     }
 
-                    var typeDisplay = prop.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
-                    var isValueType = prop.Type.IsValueType;
+                    // Determine nullability
+                    var propType = prop.Type;
+                    bool isNullable = false;
+                    if (propType is INamedTypeSymbol nt
+                        && nt.OriginalDefinition.SpecialType == SpecialType.System_Nullable_T)
+                    {
+                        isNullable = true;
+                        propType = nt.TypeArguments[0];
+                    }
+                    else if (prop.NullableAnnotation == NullableAnnotation.Annotated)
+                    {
+                        isNullable = true;
+                    }
 
-                    builder.Add(PropertyModel.Direct(prop.Name, typeDisplay, isValueType));
+                    // Check for collection
+                    ITypeSymbol collectionElementType = null;
+                    bool isArray = false;
+                    if (prop.Type.TypeKind == TypeKind.Array)
+                    {
+                        isArray = true;
+                        collectionElementType = ((IArrayTypeSymbol)prop.Type).ElementType;
+                    }
+                    else if (prop.Type.SpecialType != SpecialType.System_String)
+                    {
+                        foreach (var iface in prop.Type.AllInterfaces)
+                        {
+                            if (iface.OriginalDefinition.SpecialType == SpecialType.System_Collections_Generic_IEnumerable_T
+                                && iface.TypeArguments.Length == 1)
+                            {
+                                collectionElementType = iface.TypeArguments[0];
+                                break;
+                            }
+                        }
+                    }
+
+                    if (collectionElementType != null)
+                    {
+                        var elementFullName = collectionElementType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+                        FacetteDtoInfo elementDtoInfo;
+                        if (facetteLookup.TryGetValue(elementFullName, out elementDtoInfo))
+                        {
+                            var nestedProps = GetNestedSourceProperties(elementDtoInfo.SourceType, facetteLookup, new HashSet<string>(visited));
+                            var dtoElementType = elementDtoInfo.DtoTypeFullName;
+                            string collectionTypeName = isArray
+                                ? dtoElementType + "[]"
+                                : "global::System.Collections.Generic.List<" + dtoElementType + ">";
+                            if (isNullable) collectionTypeName += "?";
+
+                            builder.Add(new PropertyModel(
+                                prop.Name, collectionTypeName, false,
+                                MappingKind.Collection, prop.Name,
+                                elementDtoInfo.DtoTypeName, elementDtoInfo.DtoTypeFullName,
+                                elementFullName, isNullable, isArray, nestedProps));
+                        }
+                        else
+                        {
+                            var typeDisplay = prop.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+                            builder.Add(PropertyModel.Direct(prop.Name, typeDisplay, prop.Type.IsValueType));
+                        }
+                        continue;
+                    }
+
+                    // Check for nested DTO
+                    var unwrappedFullName = propType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+                    FacetteDtoInfo dtoInfo;
+                    if (facetteLookup.TryGetValue(unwrappedFullName, out dtoInfo))
+                    {
+                        var nestedProps = GetNestedSourceProperties(dtoInfo.SourceType, facetteLookup, new HashSet<string>(visited));
+                        var dtoTypeForProperty = dtoInfo.DtoTypeFullName;
+                        if (isNullable) dtoTypeForProperty += "?";
+
+                        builder.Add(new PropertyModel(
+                            prop.Name, dtoTypeForProperty, false,
+                            MappingKind.Nested, prop.Name,
+                            dtoInfo.DtoTypeName, dtoInfo.DtoTypeFullName,
+                            "", isNullable, false, nestedProps));
+                    }
+                    else
+                    {
+                        var typeDisplay = prop.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+                        builder.Add(PropertyModel.Direct(prop.Name, typeDisplay, prop.Type.IsValueType));
+                    }
                 }
 
                 current = current.BaseType;
             }
 
+            visited.Remove(sourceFullName);
             return builder.ToImmutable();
         }
 
@@ -472,7 +692,7 @@ namespace Facette.Generator.Builders
                             dtoElementType = elementDtoInfo.DtoTypeFullName;
                             nestedDtoTypeName = elementDtoInfo.DtoTypeName;
                             nestedDtoTypeFullName = elementDtoInfo.DtoTypeFullName;
-                            nestedProps = elementDtoInfo.NestedProperties;
+                            nestedProps = GetNestedSourceProperties(elementDtoInfo.SourceType, facetteLookup, new HashSet<string>());
                         }
                         else
                         {
@@ -527,6 +747,8 @@ namespace Facette.Generator.Builders
                             dtoTypeForProperty = dtoTypeForProperty + "?";
                         }
 
+                        var nestedProps = GetNestedSourceProperties(dtoInfo.SourceType, facetteLookup, new HashSet<string>());
+
                         builder.Add(new PropertyModel(
                             prop.Name,
                             dtoTypeForProperty,
@@ -538,7 +760,7 @@ namespace Facette.Generator.Builders
                             "",
                             isNullable,
                             false,
-                            dtoInfo.NestedProperties));
+                            nestedProps));
                     }
                     else
                     {
@@ -616,21 +838,143 @@ namespace Facette.Generator.Builders
             return defaultValue;
         }
 
+        private struct FlattenedPathResult
+        {
+            public string Path;
+            public bool HasNullableSegment;
+            public ITypeSymbol LeafType;
+        }
+
+        /// <summary>
+        /// Resolves a dot-notation path (e.g., "Address.City") against a source type.
+        /// Returns null if any segment is invalid.
+        /// </summary>
+        private static FlattenedPathResult? ResolvePropertyPath(INamedTypeSymbol sourceType, string path)
+        {
+            var segments = path.Split('.');
+            ITypeSymbol currentType = sourceType;
+            bool hasNullable = false;
+
+            for (int i = 0; i < segments.Length; i++)
+            {
+                var namedType = currentType as INamedTypeSymbol;
+                if (namedType == null) return null;
+
+                var prop = FindSourceProperty(namedType, segments[i]);
+                if (prop == null) return null;
+
+                // Check nullability of intermediate segments (not the leaf)
+                if (i < segments.Length - 1)
+                {
+                    if (prop.NullableAnnotation == NullableAnnotation.Annotated)
+                    {
+                        hasNullable = true;
+                    }
+                }
+
+                currentType = prop.Type;
+
+                // Unwrap Nullable<T>
+                if (currentType is INamedTypeSymbol nt
+                    && nt.OriginalDefinition.SpecialType == SpecialType.System_Nullable_T)
+                {
+                    hasNullable = true;
+                    currentType = nt.TypeArguments[0];
+                }
+            }
+
+            return new FlattenedPathResult { Path = path, HasNullableSegment = hasNullable, LeafType = currentType };
+        }
+
+        /// <summary>
+        /// Attempts greedy prefix matching to resolve a property name like "AddressCity"
+        /// to a flattened path "Address.City" on the source type.
+        /// </summary>
+        private static FlattenedPathResult? TryResolveFlattenedPath(INamedTypeSymbol sourceType, string propertyName)
+        {
+            return TryResolveFlattenedPathRecursive(sourceType, propertyName, "", false);
+        }
+
+        private static FlattenedPathResult? TryResolveFlattenedPathRecursive(
+            INamedTypeSymbol currentType, string remaining, string pathSoFar, bool hasNullable)
+        {
+            if (string.IsNullOrEmpty(remaining)) return null;
+
+            // Greedy: try longest prefix first
+            for (int len = remaining.Length; len >= 1; len--)
+            {
+                var candidateName = remaining.Substring(0, len);
+                var prop = FindSourceProperty(currentType, candidateName);
+                if (prop == null) continue;
+
+                var newPath = string.IsNullOrEmpty(pathSoFar)
+                    ? candidateName
+                    : pathSoFar + "." + candidateName;
+
+                var rest = remaining.Substring(len);
+
+                if (rest.Length == 0)
+                {
+                    // This is the leaf
+                    return new FlattenedPathResult
+                    {
+                        Path = newPath,
+                        HasNullableSegment = hasNullable,
+                        LeafType = prop.Type
+                    };
+                }
+
+                // There's more to resolve — this must be a navigation property
+                var propType = prop.Type;
+                bool segNullable = hasNullable || prop.NullableAnnotation == NullableAnnotation.Annotated;
+
+                // Unwrap Nullable<T>
+                if (propType is INamedTypeSymbol nt
+                    && nt.OriginalDefinition.SpecialType == SpecialType.System_Nullable_T)
+                {
+                    segNullable = true;
+                    propType = nt.TypeArguments[0];
+                }
+
+                var namedPropType = propType as INamedTypeSymbol;
+                if (namedPropType == null) continue;
+
+                var result = TryResolveFlattenedPathRecursive(namedPropType, rest, newPath, segNullable);
+                if (result != null) return result;
+            }
+
+            return null;
+        }
+
+        private static bool HasStaticMethod(INamedTypeSymbol type, string methodName)
+        {
+            foreach (var member in type.GetMembers())
+            {
+                if (member is IMethodSymbol method
+                    && method.IsStatic
+                    && method.Name == methodName)
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
+
         /// <summary>
         /// Holds information about a discovered Facette DTO for nested mapping.
         /// </summary>
         private sealed class FacetteDtoInfo
         {
-            public FacetteDtoInfo(string dtoTypeName, string dtoTypeFullName, ImmutableArray<PropertyModel> nestedProperties)
+            public FacetteDtoInfo(string dtoTypeName, string dtoTypeFullName, INamedTypeSymbol sourceType)
             {
                 DtoTypeName = dtoTypeName;
                 DtoTypeFullName = dtoTypeFullName;
-                NestedProperties = nestedProperties;
+                SourceType = sourceType;
             }
 
             public string DtoTypeName { get; }
             public string DtoTypeFullName { get; }
-            public ImmutableArray<PropertyModel> NestedProperties { get; }
+            public INamedTypeSymbol SourceType { get; }
         }
     }
 }
