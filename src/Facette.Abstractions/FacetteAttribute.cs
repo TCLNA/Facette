@@ -15,4 +15,5 @@ public sealed class FacetteAttribute : Attribute
     public bool GenerateToSource { get; set; } = true;
     public bool GenerateProjection { get; set; } = true;
     public bool GenerateMapper { get; set; } = true;
+    public Type[]? NestedDtos { get; set; }
 }

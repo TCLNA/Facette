@@ -9,11 +9,13 @@ namespace Facette.Generator.Builders
         public static string Build(
             string dtoTypeName,
             string sourceTypeFullName,
-            ImmutableArray<PropertyModel> properties)
+            ImmutableArray<PropertyModel> properties,
+            bool hasBaseFacette = false)
         {
             var sb = new StringBuilder();
 
-            sb.AppendLine("    public static System.Linq.Expressions.Expression<System.Func<" + sourceTypeFullName + ", " + dtoTypeName + ">> Projection =>");
+            var newKeyword = hasBaseFacette ? "new " : "";
+            sb.AppendLine("    public " + newKeyword + "static System.Linq.Expressions.Expression<System.Func<" + sourceTypeFullName + ", " + dtoTypeName + ">> Projection =>");
             sb.AppendLine("        source => new " + dtoTypeName);
             sb.AppendLine("        {");
 
@@ -50,7 +52,8 @@ namespace Facette.Generator.Builders
                 }
                 else
                 {
-                    var sourceName = prop.MappingKind == MappingKind.Custom ? prop.SourcePropertyName : prop.Name;
+                    var sourceName = (prop.MappingKind == MappingKind.Custom || !string.IsNullOrEmpty(prop.SourceParameter))
+                        ? prop.SourcePropertyName : prop.Name;
                     var convertMethod = prop.ConvertMethod;
                     if (!string.IsNullOrEmpty(convertMethod))
                     {
@@ -72,7 +75,7 @@ namespace Facette.Generator.Builders
             string comma)
         {
             var cSourceName = prop.SourcePropertyName;
-            var cToMethod = prop.IsArray ? ".ToArray()" : ".ToList()";
+            var cToMethod = !string.IsNullOrEmpty(prop.CollectionConvertMethod) ? prop.CollectionConvertMethod : (prop.IsArray ? ".ToArray()" : ".ToList()");
             string cExpr;
 
             if (prop.NestedProperties.Length > 0)

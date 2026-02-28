@@ -3,7 +3,7 @@ using Facette.IntegrationTests.Models;
 
 namespace Facette.IntegrationTests.Dtos;
 
-[Facette(typeof(Company))]
+[Facette(typeof(Company), NestedDtos = new[] { typeof(AddressDto) })]
 public partial record CompanyDto
 {
     // FacetteIgnore: this property should not participate in mapping

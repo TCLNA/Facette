@@ -75,5 +75,13 @@ namespace Facette.Generator.Diagnostics
             category: "Facette",
             defaultSeverity: DiagnosticSeverity.Warning,
             isEnabledByDefault: true);
+
+        public static readonly DiagnosticDescriptor FCT010_AmbiguousNestedDto = new DiagnosticDescriptor(
+            id: "FCT010",
+            title: "Ambiguous nested DTO",
+            messageFormat: "Multiple DTOs target source type '{0}'. Specify which to use via NestedDtos on '{1}', or remove the ambiguity.",
+            category: "Facette",
+            defaultSeverity: DiagnosticSeverity.Error,
+            isEnabledByDefault: true);
     }
 }

@@ -12,8 +12,8 @@ namespace Facette.Generator.Builders
 
             foreach (var prop in properties)
             {
-                // Skip Custom-mapped and Flattened properties — they are user-declared on the target type
-                if (prop.MappingKind == MappingKind.Custom || prop.MappingKind == MappingKind.Flattened)
+                // Skip Custom-mapped, Flattened, and Inherited properties
+                if (prop.MappingKind == MappingKind.Custom || prop.MappingKind == MappingKind.Flattened || prop.IsInherited)
                 {
                     continue;
                 }

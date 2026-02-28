@@ -63,7 +63,9 @@ namespace Facette.Generator.Models
             bool generateToSource,
             bool generateProjection,
             bool generateMapper,
-            ImmutableArray<DiagnosticInfo> diagnostics)
+            ImmutableArray<DiagnosticInfo> diagnostics,
+            bool hasBaseFacette = false,
+            ImmutableArray<AdditionalSourceInfo> additionalSources = default)
         {
             Namespace = ns;
             TypeName = typeName;
@@ -73,6 +75,8 @@ namespace Facette.Generator.Models
             GenerateProjection = generateProjection;
             GenerateMapper = generateMapper;
             Diagnostics = diagnostics;
+            HasBaseFacette = hasBaseFacette;
+            AdditionalSources = additionalSources.IsDefault ? ImmutableArray<AdditionalSourceInfo>.Empty : additionalSources;
         }
 
         public string Namespace { get; }
@@ -83,6 +87,8 @@ namespace Facette.Generator.Models
         public bool GenerateProjection { get; }
         public bool GenerateMapper { get; }
         public ImmutableArray<DiagnosticInfo> Diagnostics { get; }
+        public bool HasBaseFacette { get; }
+        public ImmutableArray<AdditionalSourceInfo> AdditionalSources { get; }
 
         public bool Equals(FacetteTargetModel other)
         {
@@ -93,6 +99,7 @@ namespace Facette.Generator.Models
             if (GenerateToSource != other.GenerateToSource) return false;
             if (GenerateProjection != other.GenerateProjection) return false;
             if (GenerateMapper != other.GenerateMapper) return false;
+            if (HasBaseFacette != other.HasBaseFacette) return false;
             if (Properties.Length != other.Properties.Length) return false;
 
             for (int i = 0; i < Properties.Length; i++)
@@ -125,6 +132,7 @@ namespace Facette.Generator.Models
                 hash = hash * 31 + GenerateToSource.GetHashCode();
                 hash = hash * 31 + GenerateProjection.GetHashCode();
                 hash = hash * 31 + GenerateMapper.GetHashCode();
+                hash = hash * 31 + HasBaseFacette.GetHashCode();
                 hash = hash * 31 + Properties.Length.GetHashCode();
                 return hash;
             }
@@ -158,7 +166,11 @@ namespace Facette.Generator.Models
             bool flattenedPathHasNullableSegment = false,
             string convertMethod = "",
             string convertBackMethod = "",
-            string convertContainingType = "")
+            string convertContainingType = "",
+            string flattenedNavigationType = "",
+            string collectionConvertMethod = "",
+            bool isInherited = false,
+            string sourceParameter = "")
         {
             Name = name;
             TypeFullName = typeFullName;
@@ -176,6 +188,10 @@ namespace Facette.Generator.Models
             ConvertMethod = convertMethod ?? "";
             ConvertBackMethod = convertBackMethod ?? "";
             ConvertContainingType = convertContainingType ?? "";
+            FlattenedNavigationType = flattenedNavigationType ?? "";
+            CollectionConvertMethod = collectionConvertMethod ?? "";
+            IsInherited = isInherited;
+            SourceParameter = sourceParameter ?? "";
         }
 
         public string Name { get; }
@@ -194,6 +210,10 @@ namespace Facette.Generator.Models
         public string ConvertMethod { get; }
         public string ConvertBackMethod { get; }
         public string ConvertContainingType { get; }
+        public string FlattenedNavigationType { get; }
+        public string CollectionConvertMethod { get; }
+        public bool IsInherited { get; }
+        public string SourceParameter { get; }
 
         public static PropertyModel Direct(string name, string typeFullName, bool isValueType)
         {
@@ -221,6 +241,10 @@ namespace Facette.Generator.Models
             if (ConvertMethod != other.ConvertMethod) return false;
             if (ConvertBackMethod != other.ConvertBackMethod) return false;
             if (ConvertContainingType != other.ConvertContainingType) return false;
+            if (FlattenedNavigationType != other.FlattenedNavigationType) return false;
+            if (CollectionConvertMethod != other.CollectionConvertMethod) return false;
+            if (IsInherited != other.IsInherited) return false;
+            if (SourceParameter != other.SourceParameter) return false;
             if (NestedProperties.Length != other.NestedProperties.Length) return false;
             for (int i = 0; i < NestedProperties.Length; i++)
             {
@@ -254,7 +278,47 @@ namespace Facette.Generator.Models
                 hash = hash * 31 + (ConvertMethod != null ? ConvertMethod.GetHashCode() : 0);
                 hash = hash * 31 + (ConvertBackMethod != null ? ConvertBackMethod.GetHashCode() : 0);
                 hash = hash * 31 + (ConvertContainingType != null ? ConvertContainingType.GetHashCode() : 0);
+                hash = hash * 31 + (FlattenedNavigationType != null ? FlattenedNavigationType.GetHashCode() : 0);
+                hash = hash * 31 + (CollectionConvertMethod != null ? CollectionConvertMethod.GetHashCode() : 0);
+                hash = hash * 31 + IsInherited.GetHashCode();
+                hash = hash * 31 + (SourceParameter != null ? SourceParameter.GetHashCode() : 0);
                 hash = hash * 31 + NestedProperties.Length.GetHashCode();
+                return hash;
+            }
+        }
+    }
+
+    public sealed class AdditionalSourceInfo : IEquatable<AdditionalSourceInfo>
+    {
+        public AdditionalSourceInfo(string sourceTypeFullName, string prefix, string parameterName)
+        {
+            SourceTypeFullName = sourceTypeFullName;
+            Prefix = prefix;
+            ParameterName = parameterName;
+        }
+
+        public string SourceTypeFullName { get; }
+        public string Prefix { get; }
+        public string ParameterName { get; }
+
+        public bool Equals(AdditionalSourceInfo other)
+        {
+            if (other == null) return false;
+            return SourceTypeFullName == other.SourceTypeFullName
+                && Prefix == other.Prefix
+                && ParameterName == other.ParameterName;
+        }
+
+        public override bool Equals(object obj) => Equals(obj as AdditionalSourceInfo);
+
+        public override int GetHashCode()
+        {
+            unchecked
+            {
+                var hash = 17;
+                hash = hash * 31 + (SourceTypeFullName != null ? SourceTypeFullName.GetHashCode() : 0);
+                hash = hash * 31 + (Prefix != null ? Prefix.GetHashCode() : 0);
+                hash = hash * 31 + (ParameterName != null ? ParameterName.GetHashCode() : 0);
                 return hash;
             }
         }

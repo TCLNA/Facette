@@ -146,15 +146,16 @@ public class FlatteningTests
             .First(t => t.FilePath.Contains("UserDto.g.cs"))
             .GetText().ToString();
 
-        // ToSource should NOT contain AddressCity (flattened properties are read-only)
+        // ToSource should reconstruct the Address object from flattened properties
         var toSourceIdx = generatedCode.IndexOf("ToSource()");
         Assert.True(toSourceIdx >= 0, "ToSource method should exist");
-        // Find the end of the ToSource method (next closing brace pattern)
         var projectionIdx = generatedCode.IndexOf("Projection", toSourceIdx);
         var toSourceSection = projectionIdx > 0
             ? generatedCode.Substring(toSourceIdx, projectionIdx - toSourceIdx)
             : generatedCode.Substring(toSourceIdx);
-        Assert.DoesNotContain("AddressCity", toSourceSection);
+        // Reverse flattening: Address = new ... { City = this.AddressCity }
+        Assert.Contains("Address = new", toSourceSection);
+        Assert.Contains("City = this.AddressCity", toSourceSection);
     }
 
     [Fact]

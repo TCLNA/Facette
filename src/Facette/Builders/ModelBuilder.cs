@@ -143,9 +143,29 @@ namespace Facette.Generator.Builders
             bool generateProjection = GetNamedBoolArg(attribute, "GenerateProjection", true);
             bool generateMapper = GetNamedBoolArg(attribute, "GenerateMapper", true);
 
+            // Extract NestedDtos named argument
+            var nestedDtoOverrides = new HashSet<string>();
+            foreach (var arg in attribute.NamedArguments)
+            {
+                if (arg.Key == "NestedDtos" && arg.Value.Kind == TypedConstantKind.Array)
+                {
+                    foreach (var val in arg.Value.Values)
+                    {
+                        if (val.Value is INamedTypeSymbol dtoType)
+                        {
+                            var dtoFullName = dtoType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+                            nestedDtoOverrides.Add(dtoFullName);
+                        }
+                    }
+                }
+            }
+
             // Build Facette lookup: scan all types in the compilation for [Facette] attributes
             var compilation = context.SemanticModel.Compilation;
-            var facetteLookup = BuildFacetteLookup(compilation);
+            var allFacetteLookup = BuildFacetteLookup(compilation);
+            var ownSourceFullName = sourceType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+            var referencedSourceTypes = GetReferencedSourceTypes(sourceType, allFacetteLookup);
+            var facetteLookup = BuildEffectiveLookup(allFacetteLookup, nestedDtoOverrides, ownSourceFullName, referencedSourceTypes, targetSymbol.Name, diagnosticsBuilder, filePath, textSpan, lineSpan);
 
             // Collect properties from source type
             var autoProperties = GetSourceProperties(sourceType, exclude, include, facetteLookup, compilation);
@@ -272,7 +292,8 @@ namespace Facette.Generator.Builders
                             flattenedPathHasNullableSegment: resolveResult.Value.HasNullableSegment,
                             convertMethod: convertMethod ?? "",
                             convertBackMethod: convertBackMethod ?? "",
-                            convertContainingType: !string.IsNullOrEmpty(convertMethod) ? targetSymbol.Name : ""));
+                            convertContainingType: !string.IsNullOrEmpty(convertMethod) ? targetSymbol.Name : "",
+                            flattenedNavigationType: resolveResult.Value.NavigationType ?? ""));
                     }
                     else
                     {
@@ -340,19 +361,29 @@ namespace Facette.Generator.Builders
                             false, false,
                             ImmutableArray<PropertyModel>.Empty,
                             flattenedPath: flatResult.Value.Path,
-                            flattenedPathHasNullableSegment: flatResult.Value.HasNullableSegment));
+                            flattenedPathHasNullableSegment: flatResult.Value.HasNullableSegment,
+                            flattenedNavigationType: flatResult.Value.NavigationType ?? ""));
                     }
                     // else: User-declared property without [MapFrom] and no flattening match — skip entirely
                 }
             }
 
-            // Collect source property names that are claimed by custom mappings
+            // Collect source property names that are claimed by custom mappings or flattened navigation
             var claimedSourceNames = new HashSet<string>();
             foreach (var custom in customMappings)
             {
                 if (custom.MappingKind == MappingKind.Custom && custom.SourcePropertyName != custom.Name)
                 {
                     claimedSourceNames.Add(custom.SourcePropertyName);
+                }
+                else if (custom.MappingKind == MappingKind.Flattened && !string.IsNullOrEmpty(custom.FlattenedPath))
+                {
+                    // Claim the navigation property (first segment of the flattened path)
+                    var dotIdx = custom.FlattenedPath.IndexOf('.');
+                    if (dotIdx > 0)
+                    {
+                        claimedSourceNames.Add(custom.FlattenedPath.Substring(0, dotIdx));
+                    }
                 }
             }
 
@@ -374,6 +405,96 @@ namespace Facette.Generator.Builders
                 filteredBuilder.Add(custom);
             }
 
+            // Check if the DTO base type also has [Facette] — mark inherited properties
+            var baseFacetteProperties = GetBaseFacettePropertyNames(targetSymbol);
+            if (baseFacetteProperties.Count > 0)
+            {
+                var inheritedBuilder = ImmutableArray.CreateBuilder<PropertyModel>();
+                foreach (var prop in filteredBuilder)
+                {
+                    if (baseFacetteProperties.Contains(prop.Name))
+                    {
+                        // Mark as inherited — PropertyBuilder will skip it, but Mapping/Projection still use it
+                        inheritedBuilder.Add(new PropertyModel(
+                            prop.Name, prop.TypeFullName, prop.IsValueType,
+                            prop.MappingKind, prop.SourcePropertyName,
+                            prop.NestedDtoTypeName, prop.NestedDtoTypeFullName,
+                            prop.CollectionElementTypeFullName,
+                            prop.IsNullable, prop.IsArray, prop.NestedProperties,
+                            prop.FlattenedPath, prop.FlattenedPathHasNullableSegment,
+                            prop.ConvertMethod, prop.ConvertBackMethod, prop.ConvertContainingType,
+                            prop.FlattenedNavigationType, prop.CollectionConvertMethod,
+                            isInherited: true));
+                    }
+                    else
+                    {
+                        inheritedBuilder.Add(prop);
+                    }
+                }
+                filteredBuilder = inheritedBuilder;
+            }
+
+            // Detect [AdditionalSource] attributes
+            var additionalSourcesBuilder = ImmutableArray.CreateBuilder<AdditionalSourceInfo>();
+            var existingPropNames = new HashSet<string>();
+            foreach (var p in filteredBuilder)
+                existingPropNames.Add(p.Name);
+
+            foreach (var attrData in targetSymbol.GetAttributes())
+            {
+                if (attrData.AttributeClass == null
+                    || attrData.AttributeClass.ToDisplayString() != "Facette.Abstractions.AdditionalSourceAttribute")
+                    continue;
+
+                if (attrData.ConstructorArguments.Length == 0)
+                    continue;
+
+                var additionalSourceType = attrData.ConstructorArguments[0].Value as INamedTypeSymbol;
+                if (additionalSourceType == null || additionalSourceType.TypeKind == TypeKind.Error)
+                    continue;
+
+                var prefix = attrData.ConstructorArguments.Length > 1
+                    && attrData.ConstructorArguments[1].Value is string p2
+                    ? p2 : "";
+
+                var addSourceFullName = additionalSourceType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+                var paramName = string.IsNullOrEmpty(prefix)
+                    ? char.ToLowerInvariant(additionalSourceType.Name[0]) + additionalSourceType.Name.Substring(1)
+                    : char.ToLowerInvariant(prefix[0]) + prefix.Substring(1);
+
+                additionalSourcesBuilder.Add(new AdditionalSourceInfo(addSourceFullName, prefix, paramName));
+
+                // Collect properties from additional source type (simple: direct mappings only)
+                var addProps = GetSourcePropertyNames(additionalSourceType);
+                var addCurrent = additionalSourceType;
+                var addSeen = new HashSet<string>();
+                while (addCurrent != null && addCurrent.SpecialType != SpecialType.System_Object)
+                {
+                    foreach (var member in addCurrent.GetMembers())
+                    {
+                        if (!(member is IPropertySymbol addProp)) continue;
+                        if (!addSeen.Add(addProp.Name)) continue;
+                        if (addProp.DeclaredAccessibility != Accessibility.Public) continue;
+                        if (addProp.IsStatic || addProp.IsIndexer || addProp.GetMethod == null) continue;
+
+                        var propDtoName = prefix + addProp.Name;
+                        if (existingPropNames.Contains(propDtoName)) continue;
+                        if (userDeclaredNames.Contains(propDtoName)) continue;
+
+                        var typeDisplay = addProp.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+
+                        filteredBuilder.Add(new PropertyModel(
+                            propDtoName, typeDisplay, addProp.Type.IsValueType,
+                            MappingKind.Direct, addProp.Name,
+                            "", "", "", false, false,
+                            ImmutableArray<PropertyModel>.Empty,
+                            sourceParameter: paramName));
+                        existingPropNames.Add(propDtoName);
+                    }
+                    addCurrent = addCurrent.BaseType;
+                }
+            }
+
             var properties = filteredBuilder.ToImmutable();
 
             var ns = targetSymbol.ContainingNamespace.IsGlobalNamespace
@@ -388,13 +509,15 @@ namespace Facette.Generator.Builders
                 generateToSource,
                 generateProjection,
                 generateMapper,
-                diagnosticsBuilder.ToImmutable()
+                diagnosticsBuilder.ToImmutable(),
+                hasBaseFacette: baseFacetteProperties.Count > 0,
+                additionalSources: additionalSourcesBuilder.ToImmutable()
             );
         }
 
-        private static Dictionary<string, FacetteDtoInfo> BuildFacetteLookup(Compilation compilation)
+        private static Dictionary<string, List<FacetteDtoInfo>> BuildFacetteLookup(Compilation compilation)
         {
-            var lookup = new Dictionary<string, FacetteDtoInfo>();
+            var lookup = new Dictionary<string, List<FacetteDtoInfo>>();
 
             foreach (var tree in compilation.SyntaxTrees)
             {
@@ -436,12 +559,141 @@ namespace Facette.Generator.Builders
                         var dtoTypeName = typeSymbol.Name;
                         var dtoTypeFullName = typeSymbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
 
-                        lookup[sourceFullName] = new FacetteDtoInfo(dtoTypeName, dtoTypeFullName, srcType);
+                        List<FacetteDtoInfo> list;
+                        if (!lookup.TryGetValue(sourceFullName, out list))
+                        {
+                            list = new List<FacetteDtoInfo>();
+                            lookup[sourceFullName] = list;
+                        }
+                        list.Add(new FacetteDtoInfo(dtoTypeName, dtoTypeFullName, srcType));
                     }
                 }
             }
 
             return lookup;
+        }
+
+        /// <summary>
+        /// Collects the set of source type full names that are actually referenced
+        /// as nested or collection element types from the given source type's properties.
+        /// </summary>
+        private static HashSet<string> GetReferencedSourceTypes(
+            INamedTypeSymbol sourceType,
+            Dictionary<string, List<FacetteDtoInfo>> allLookup)
+        {
+            var referenced = new HashSet<string>();
+            var current = sourceType;
+            while (current != null && current.SpecialType != SpecialType.System_Object)
+            {
+                foreach (var member in current.GetMembers())
+                {
+                    if (!(member is IPropertySymbol prop)) continue;
+                    if (prop.DeclaredAccessibility != Accessibility.Public) continue;
+                    if (prop.IsStatic || prop.IsIndexer || prop.GetMethod == null) continue;
+
+                    var propType = prop.Type;
+
+                    // Unwrap Nullable<T>
+                    if (propType is INamedTypeSymbol nt
+                        && nt.OriginalDefinition.SpecialType == SpecialType.System_Nullable_T)
+                    {
+                        propType = nt.TypeArguments[0];
+                    }
+
+                    // Check collection element type
+                    ITypeSymbol elementType = null;
+                    if (propType.TypeKind == TypeKind.Array)
+                    {
+                        elementType = ((IArrayTypeSymbol)propType).ElementType;
+                    }
+                    else if (propType.SpecialType != SpecialType.System_String)
+                    {
+                        foreach (var iface in propType.AllInterfaces)
+                        {
+                            if (iface.OriginalDefinition.SpecialType == SpecialType.System_Collections_Generic_IEnumerable_T
+                                && iface.TypeArguments.Length == 1)
+                            {
+                                elementType = iface.TypeArguments[0];
+                                break;
+                            }
+                        }
+                    }
+
+                    if (elementType != null)
+                    {
+                        var elemFullName = elementType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+                        if (allLookup.ContainsKey(elemFullName))
+                            referenced.Add(elemFullName);
+                    }
+                    else
+                    {
+                        var typeFullName = propType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+                        if (allLookup.ContainsKey(typeFullName))
+                            referenced.Add(typeFullName);
+                    }
+                }
+                current = current.BaseType;
+            }
+            return referenced;
+        }
+
+        private static Dictionary<string, FacetteDtoInfo> BuildEffectiveLookup(
+            Dictionary<string, List<FacetteDtoInfo>> allLookup,
+            HashSet<string> nestedDtoOverrides,
+            string ownSourceFullName,
+            HashSet<string> referencedSourceTypes,
+            string targetTypeName,
+            ImmutableArray<DiagnosticInfo>.Builder diagnosticsBuilder,
+            string filePath,
+            Microsoft.CodeAnalysis.Text.TextSpan textSpan,
+            Microsoft.CodeAnalysis.Text.LinePositionSpan lineSpan)
+        {
+            var effective = new Dictionary<string, FacetteDtoInfo>();
+
+            foreach (var kvp in allLookup)
+            {
+                var sourceFullName = kvp.Key;
+                var candidates = kvp.Value;
+
+                if (candidates.Count == 1)
+                {
+                    effective[sourceFullName] = candidates[0];
+                    continue;
+                }
+
+                // Multiple DTOs for same source type — check for override
+                FacetteDtoInfo matched = null;
+                foreach (var candidate in candidates)
+                {
+                    if (nestedDtoOverrides.Contains(candidate.DtoTypeFullName))
+                    {
+                        matched = candidate;
+                        break;
+                    }
+                }
+
+                if (matched != null)
+                {
+                    effective[sourceFullName] = matched;
+                }
+                else
+                {
+                    // Only emit FCT010 if this source type is actually referenced
+                    // as a nested/collection property from the current target's source type
+                    if (sourceFullName != ownSourceFullName && referencedSourceTypes.Contains(sourceFullName))
+                    {
+                        diagnosticsBuilder.Add(new DiagnosticInfo(
+                            DiagnosticDescriptors.FCT010_AmbiguousNestedDto,
+                            filePath, textSpan, lineSpan,
+                            new object[] { sourceFullName, targetTypeName }));
+                    }
+
+                    // Use the first candidate as fallback
+                    effective[sourceFullName] = candidates[0];
+                }
+            }
+
+            return effective;
         }
 
         /// <summary>
@@ -507,45 +759,25 @@ namespace Facette.Generator.Builders
                         isNullable = true;
                     }
 
-                    // Check for collection
-                    ITypeSymbol collectionElementType = null;
-                    bool isArray = false;
-                    if (prop.Type.TypeKind == TypeKind.Array)
+                    // Check for collection — use a preliminary element type for detection
+                    var prelimCollInfo = DetectCollection(propType, "" /* placeholder */, isNullable);
+                    if (prelimCollInfo != null)
                     {
-                        isArray = true;
-                        collectionElementType = ((IArrayTypeSymbol)prop.Type).ElementType;
-                    }
-                    else if (prop.Type.SpecialType != SpecialType.System_String)
-                    {
-                        foreach (var iface in prop.Type.AllInterfaces)
-                        {
-                            if (iface.OriginalDefinition.SpecialType == SpecialType.System_Collections_Generic_IEnumerable_T
-                                && iface.TypeArguments.Length == 1)
-                            {
-                                collectionElementType = iface.TypeArguments[0];
-                                break;
-                            }
-                        }
-                    }
-
-                    if (collectionElementType != null)
-                    {
-                        var elementFullName = collectionElementType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+                        var elemType = prelimCollInfo.Value.ElementType;
+                        var elementFullName = elemType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
                         FacetteDtoInfo elementDtoInfo;
                         if (facetteLookup.TryGetValue(elementFullName, out elementDtoInfo))
                         {
+                            // Re-detect with actual DTO element type for correct type names
+                            var collInfo = DetectCollection(propType, elementDtoInfo.DtoTypeFullName, isNullable).Value;
                             var nestedProps = GetNestedSourceProperties(elementDtoInfo.SourceType, facetteLookup, new HashSet<string>(visited));
-                            var dtoElementType = elementDtoInfo.DtoTypeFullName;
-                            string collectionTypeName = isArray
-                                ? dtoElementType + "[]"
-                                : "global::System.Collections.Generic.List<" + dtoElementType + ">";
-                            if (isNullable) collectionTypeName += "?";
 
                             builder.Add(new PropertyModel(
-                                prop.Name, collectionTypeName, false,
+                                prop.Name, collInfo.DtoTypeName, false,
                                 MappingKind.Collection, prop.Name,
                                 elementDtoInfo.DtoTypeName, elementDtoInfo.DtoTypeFullName,
-                                elementFullName, isNullable, isArray, nestedProps));
+                                elementFullName, isNullable, collInfo.IsArray, nestedProps,
+                                collectionConvertMethod: collInfo.ConvertMethod));
                         }
                         else
                         {
@@ -653,34 +885,12 @@ namespace Facette.Generator.Builders
                     }
 
                     // Check if the property is a collection type
-                    ITypeSymbol collectionElementType = null;
-                    bool isArray = false;
-
-                    if (prop.Type.TypeKind == TypeKind.Array)
+                    var prelimCollInfo2 = DetectCollection(propType, "" /* placeholder */, isNullable);
+                    if (prelimCollInfo2 != null)
                     {
-                        isArray = true;
-                        collectionElementType = ((IArrayTypeSymbol)prop.Type).ElementType;
-                    }
-                    else if (prop.Type.SpecialType != SpecialType.System_String)
-                    {
-                        // Check AllInterfaces for IEnumerable<T>
-                        foreach (var iface in prop.Type.AllInterfaces)
-                        {
-                            if (iface.OriginalDefinition.SpecialType == SpecialType.System_Collections_Generic_IEnumerable_T
-                                && iface.TypeArguments.Length == 1)
-                            {
-                                collectionElementType = iface.TypeArguments[0];
-                                break;
-                            }
-                        }
-                    }
+                        var elemType2 = prelimCollInfo2.Value.ElementType;
+                        var elementFullName = elemType2.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
 
-                    if (collectionElementType != null)
-                    {
-                        // This is a collection property
-                        var elementFullName = collectionElementType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
-
-                        // Check if the element type has a Facette DTO
                         FacetteDtoInfo elementDtoInfo;
                         string dtoElementType;
                         string nestedDtoTypeName;
@@ -702,34 +912,21 @@ namespace Facette.Generator.Builders
                             nestedProps = ImmutableArray<PropertyModel>.Empty;
                         }
 
-                        // Build the DTO type name for the property
-                        string collectionTypeName;
-                        if (isArray)
-                        {
-                            collectionTypeName = dtoElementType + "[]";
-                        }
-                        else
-                        {
-                            collectionTypeName = "global::System.Collections.Generic.List<" + dtoElementType + ">";
-                        }
-
-                        if (isNullable)
-                        {
-                            collectionTypeName = collectionTypeName + "?";
-                        }
+                        var collInfo2 = DetectCollection(propType, dtoElementType, isNullable).Value;
 
                         builder.Add(new PropertyModel(
                             prop.Name,
-                            collectionTypeName,
-                            false, // collections are reference types
+                            collInfo2.DtoTypeName,
+                            false,
                             MappingKind.Collection,
                             prop.Name,
                             nestedDtoTypeName,
                             nestedDtoTypeFullName,
                             elementFullName,
                             isNullable,
-                            isArray,
-                            nestedProps));
+                            collInfo2.IsArray,
+                            nestedProps,
+                            collectionConvertMethod: collInfo2.ConvertMethod));
 
                         continue;
                     }
@@ -843,6 +1040,7 @@ namespace Facette.Generator.Builders
             public string Path;
             public bool HasNullableSegment;
             public ITypeSymbol LeafType;
+            public string NavigationType; // fully-qualified type of the first navigation property
         }
 
         /// <summary>
@@ -883,7 +1081,24 @@ namespace Facette.Generator.Builders
                 }
             }
 
-            return new FlattenedPathResult { Path = path, HasNullableSegment = hasNullable, LeafType = currentType };
+            // Determine the navigation type (type of the first segment)
+            string navType = "";
+            if (segments.Length > 1)
+            {
+                var firstProp = FindSourceProperty(sourceType, segments[0]);
+                if (firstProp != null)
+                {
+                    var firstType = firstProp.Type;
+                    if (firstType is INamedTypeSymbol fnt
+                        && fnt.OriginalDefinition.SpecialType == SpecialType.System_Nullable_T)
+                    {
+                        firstType = fnt.TypeArguments[0];
+                    }
+                    navType = firstType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+                }
+            }
+
+            return new FlattenedPathResult { Path = path, HasNullableSegment = hasNullable, LeafType = currentType, NavigationType = navType };
         }
 
         /// <summary>
@@ -892,7 +1107,26 @@ namespace Facette.Generator.Builders
         /// </summary>
         private static FlattenedPathResult? TryResolveFlattenedPath(INamedTypeSymbol sourceType, string propertyName)
         {
-            return TryResolveFlattenedPathRecursive(sourceType, propertyName, "", false);
+            var result = TryResolveFlattenedPathRecursive(sourceType, propertyName, "", false);
+            if (result != null && result.Value.Path.Contains("."))
+            {
+                // Determine navigation type from first segment
+                var firstSegment = result.Value.Path.Split('.')[0];
+                var firstProp = FindSourceProperty(sourceType, firstSegment);
+                if (firstProp != null)
+                {
+                    var navType = firstProp.Type;
+                    if (navType is INamedTypeSymbol fnt
+                        && fnt.OriginalDefinition.SpecialType == SpecialType.System_Nullable_T)
+                    {
+                        navType = fnt.TypeArguments[0];
+                    }
+                    var r = result.Value;
+                    r.NavigationType = navType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+                    return r;
+                }
+            }
+            return result;
         }
 
         private static FlattenedPathResult? TryResolveFlattenedPathRecursive(
@@ -946,6 +1180,52 @@ namespace Facette.Generator.Builders
             return null;
         }
 
+        /// <summary>
+        /// Checks if the DTO's base type (or any ancestor) has [Facette] and collects
+        /// the property names from the base source type(s) that the base DTO would generate.
+        /// </summary>
+        private static HashSet<string> GetBaseFacettePropertyNames(INamedTypeSymbol targetSymbol)
+        {
+            var names = new HashSet<string>();
+            var baseType = targetSymbol.BaseType;
+
+            while (baseType != null && baseType.SpecialType != SpecialType.System_Object)
+            {
+                foreach (var attr in baseType.GetAttributes())
+                {
+                    if (attr.AttributeClass != null
+                        && attr.AttributeClass.ToDisplayString() == "Facette.Abstractions.FacetteAttribute"
+                        && attr.ConstructorArguments.Length > 0
+                        && attr.ConstructorArguments[0].Value is INamedTypeSymbol baseSourceType)
+                    {
+                        // Collect public instance property names from the base source type
+                        var baseSourceNames = GetSourcePropertyNames(baseSourceType);
+                        foreach (var name in baseSourceNames)
+                        {
+                            names.Add(name);
+                        }
+
+                        // Also collect user-declared properties on the base DTO (custom mappings, flattened, etc.)
+                        foreach (var member in baseType.GetMembers())
+                        {
+                            if (member is IPropertySymbol prop
+                                && prop.DeclaredAccessibility == Accessibility.Public
+                                && !prop.IsStatic
+                                && !prop.IsIndexer)
+                            {
+                                names.Add(prop.Name);
+                            }
+                        }
+                        break;
+                    }
+                }
+
+                baseType = baseType.BaseType;
+            }
+
+            return names;
+        }
+
         private static bool HasStaticMethod(INamedTypeSymbol type, string methodName)
         {
             foreach (var member in type.GetMembers())
@@ -958,6 +1238,112 @@ namespace Facette.Generator.Builders
                 }
             }
             return false;
+        }
+
+        private struct CollectionInfo
+        {
+            public ITypeSymbol ElementType;
+            public bool IsArray;
+            public string ConvertMethod; // e.g. ".ToList()", ".ToArray()", ".ToImmutableArray()"
+            public string DtoTypeName; // fully-qualified DTO collection type, e.g. "List<DtoType>"
+        }
+
+        /// <summary>
+        /// Detects the collection kind and returns element type, convert method, and DTO type format.
+        /// Returns null if not a collection.
+        /// </summary>
+        private static CollectionInfo? DetectCollection(ITypeSymbol propType, string dtoElementType, bool isNullable)
+        {
+            if (propType.TypeKind == TypeKind.Array)
+            {
+                var elemType = ((IArrayTypeSymbol)propType).ElementType;
+                var typeName = dtoElementType + "[]";
+                if (isNullable) typeName += "?";
+                return new CollectionInfo
+                {
+                    ElementType = elemType,
+                    IsArray = true,
+                    ConvertMethod = ".ToArray()",
+                    DtoTypeName = typeName
+                };
+            }
+
+            if (propType.SpecialType == SpecialType.System_String)
+                return null;
+
+            // Check for specific collection types
+            var namedType = propType as INamedTypeSymbol;
+            if (namedType == null)
+                return null;
+
+            var originalDef = namedType.OriginalDefinition.ToDisplayString();
+            ITypeSymbol elementType = null;
+
+            // Check AllInterfaces for IEnumerable<T> to get element type
+            foreach (var iface in propType.AllInterfaces)
+            {
+                if (iface.OriginalDefinition.SpecialType == SpecialType.System_Collections_Generic_IEnumerable_T
+                    && iface.TypeArguments.Length == 1)
+                {
+                    elementType = iface.TypeArguments[0];
+                    break;
+                }
+            }
+
+            // Also check if the type itself is IEnumerable<T>
+            if (elementType == null && namedType.OriginalDefinition.SpecialType == SpecialType.System_Collections_Generic_IEnumerable_T)
+            {
+                elementType = namedType.TypeArguments[0];
+            }
+
+            if (elementType == null)
+                return null;
+
+            // Determine the convert method and DTO type based on the collection type
+            string convertMethod;
+            string dtoCollectionTypeName;
+
+            if (originalDef == "System.Collections.Generic.HashSet<T>"
+                || originalDef == "System.Collections.Generic.ISet<T>")
+            {
+                convertMethod = ".ToHashSet()";
+                dtoCollectionTypeName = "global::System.Collections.Generic.HashSet<" + dtoElementType + ">";
+            }
+            else if (originalDef == "System.Collections.Immutable.ImmutableArray<T>")
+            {
+                convertMethod = ".ToImmutableArray()";
+                dtoCollectionTypeName = "global::System.Collections.Immutable.ImmutableArray<" + dtoElementType + ">";
+            }
+            else if (originalDef == "System.Collections.Immutable.ImmutableList<T>"
+                || originalDef == "System.Collections.Immutable.IImmutableList<T>")
+            {
+                convertMethod = ".ToImmutableList()";
+                dtoCollectionTypeName = "global::System.Collections.Immutable.ImmutableList<" + dtoElementType + ">";
+            }
+            else if (originalDef == "System.Collections.Generic.IReadOnlyList<T>"
+                || originalDef == "System.Collections.Generic.IReadOnlyCollection<T>"
+                || originalDef == "System.Collections.Generic.IEnumerable<T>")
+            {
+                // IReadOnlyList/IReadOnlyCollection/IEnumerable — produce List which implements all of them
+                convertMethod = ".ToList()";
+                dtoCollectionTypeName = "global::System.Collections.Generic.List<" + dtoElementType + ">";
+            }
+            else
+            {
+                // Default: List<T> or any other IEnumerable<T> implementation
+                convertMethod = ".ToList()";
+                dtoCollectionTypeName = "global::System.Collections.Generic.List<" + dtoElementType + ">";
+            }
+
+            if (isNullable) dtoCollectionTypeName += "?";
+
+            return new CollectionInfo
+            {
+                ElementType = elementType,
+                IsArray = false,
+                ConvertMethod = convertMethod,
+                DtoTypeName = dtoCollectionTypeName
+            };
         }
 
         /// <summary>

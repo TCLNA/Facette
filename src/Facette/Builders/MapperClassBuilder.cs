@@ -23,8 +23,15 @@ namespace Facette.Generator.Builders
             sb.AppendLine("{");
 
             // ToDto extension method (always generated)
-            sb.AppendLine("    public static " + model.TypeName + " ToDto(this " + model.SourceTypeFullName + " source)");
-            sb.AppendLine("        => " + model.TypeName + ".FromSource(source);");
+            var addParams = "";
+            var addArgs = "";
+            foreach (var addSrc in model.AdditionalSources)
+            {
+                addParams += ", " + addSrc.SourceTypeFullName + " " + addSrc.ParameterName;
+                addArgs += ", " + addSrc.ParameterName;
+            }
+            sb.AppendLine("    public static " + model.TypeName + " ToDto(this " + model.SourceTypeFullName + " source" + addParams + ")");
+            sb.AppendLine("        => " + model.TypeName + ".FromSource(source" + addArgs + ");");
 
             // ToSource extension method (conditional)
             if (model.GenerateToSource)
