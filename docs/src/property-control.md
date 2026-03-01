@@ -4,14 +4,21 @@ Facette provides several ways to control which properties appear on the generate
 
 ## Exclude
 
-Pass property names to exclude as `params string[]` in the `[Facette]` constructor:
+Pass property names to exclude in the `[Facette]` constructor. The second parameter is `params string[]`, so you can list them inline:
 
 ```csharp
 [Facette(typeof(Employee), "SocialSecurityNumber", "Notes")]
 public partial record EmployeeDto;
 ```
 
-The generated DTO will have all of `Employee`'s public properties except `SocialSecurityNumber` and `Notes`.
+Or pass an explicit array with the named parameter:
+
+```csharp
+[Facette(typeof(Employee), exclude: new[] { "SocialSecurityNumber", "Notes" })]
+public partial record EmployeeDto;
+```
+
+Both forms are equivalent. The generated DTO will have all of `Employee`'s public properties except `SocialSecurityNumber` and `Notes`.
 
 ## Include
 
