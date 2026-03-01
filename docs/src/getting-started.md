@@ -56,7 +56,7 @@ var dtos = dbContext.Products
 
 ## What gets generated
 
-After building, you can inspect the generated file in your `obj/` directory. The generator produces a partial record that extends your declaration with:
+After building, the generator produces a partial record that extends your declaration with:
 
 | Member | Purpose |
 |--------|---------|
@@ -65,7 +65,10 @@ After building, you can inspect the generated file in your `obj/` directory. The
 | `ToSource()` | Maps DTO → source |
 | `static Projection` | `Expression<Func<TSource, TDto>>` for LINQ |
 
+To write the generated files to disk for inspection, see [Inspecting Generated Code](./inspecting-generated-code.md).
+
 ## Next steps
 
+- [Inspecting Generated Code](./inspecting-generated-code.md) — export generated `.g.cs` files to disk
 - [Basic Mapping](./basic-mapping.md) — understand FromSource, ToSource, and Projection in detail
 - [Property Control](./property-control.md) — include, exclude, and rename properties

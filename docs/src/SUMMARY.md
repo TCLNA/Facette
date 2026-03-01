@@ -2,6 +2,7 @@
 
 - [Introduction](./introduction.md)
 - [Getting Started](./getting-started.md)
+- [Inspecting Generated Code](./inspecting-generated-code.md)
 - [Basic Mapping](./basic-mapping.md)
 - [Property Control](./property-control.md)
 - [Nested Objects](./nested-objects.md)
