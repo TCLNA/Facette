@@ -16,4 +16,7 @@ public sealed class FacetteAttribute : Attribute
     public bool GenerateProjection { get; set; } = true;
     public bool GenerateMapper { get; set; } = true;
     public Type[]? NestedDtos { get; set; }
+    public NullableMode NullableMode { get; set; } = NullableMode.Auto;
+    public bool CopyAttributes { get; set; } = false;
+    public FacettePreset Preset { get; set; } = FacettePreset.Default;
 }

@@ -47,6 +47,10 @@ namespace Facette.Generator.Builders
                 sb.AppendLine();
                 sb.AppendLine("    public static System.Linq.IQueryable<" + model.TypeName + "> ProjectToDto(this System.Linq.IQueryable<" + model.SourceTypeFullName + "> query)");
                 sb.AppendLine("        => query.Select(" + model.TypeName + ".Projection);");
+
+                sb.AppendLine();
+                sb.AppendLine("    public static System.Linq.IQueryable<" + model.SourceTypeFullName + "> WhereDto(this System.Linq.IQueryable<" + model.SourceTypeFullName + "> query, System.Linq.Expressions.Expression<System.Func<" + model.TypeName + ", bool>> predicate)");
+                sb.AppendLine("        => query.Where(" + model.TypeName + ".MapExpression(predicate));");
             }
 
             sb.AppendLine("}");

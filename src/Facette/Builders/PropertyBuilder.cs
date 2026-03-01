@@ -6,7 +6,7 @@ namespace Facette.Generator.Builders
 {
     public static class PropertyBuilder
     {
-        public static string Build(ImmutableArray<PropertyModel> properties)
+        public static string Build(ImmutableArray<PropertyModel> properties, NullableMode nullableMode = NullableMode.Auto)
         {
             var sb = new StringBuilder();
 
@@ -18,8 +18,43 @@ namespace Facette.Generator.Builders
                     continue;
                 }
 
-                var defaultValue = prop.IsValueType || prop.IsNullable ? "" : " = default!;";
-                sb.AppendLine("    public " + prop.TypeFullName + " " + prop.Name + " { get; init; }" + defaultValue);
+                // Emit copied attributes
+                foreach (var attr in prop.CopiedAttributes)
+                {
+                    sb.AppendLine("    " + attr);
+                }
+
+                var typeName = prop.TypeFullName;
+                string defaultValue;
+
+                if (nullableMode == NullableMode.AllNullable)
+                {
+                    if (prop.IsValueType && !prop.IsNullable)
+                    {
+                        typeName += "?";
+                    }
+                    else if (!prop.IsValueType && !typeName.EndsWith("?"))
+                    {
+                        typeName += "?";
+                    }
+                    defaultValue = "";
+                }
+                else if (nullableMode == NullableMode.AllRequired)
+                {
+                    // Strip trailing ? from reference types
+                    if (!prop.IsValueType && typeName.EndsWith("?"))
+                    {
+                        typeName = typeName.Substring(0, typeName.Length - 1);
+                    }
+                    defaultValue = prop.IsValueType ? "" : " = default!;";
+                }
+                else
+                {
+                    // Auto mode — existing behavior
+                    defaultValue = prop.IsValueType || prop.IsNullable ? "" : " = default!;";
+                }
+
+                sb.AppendLine("    public " + typeName + " " + prop.Name + " { get; init; }" + defaultValue);
             }
 
             return sb.ToString().TrimEnd();

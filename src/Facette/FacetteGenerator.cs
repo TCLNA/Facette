@@ -55,7 +55,7 @@ namespace Facette.Generator
 
         private static void EmitDtoSource(SourceProductionContext spc, FacetteTargetModel model)
         {
-            var properties = PropertyBuilder.Build(model.Properties);
+            var properties = PropertyBuilder.Build(model.Properties, model.NullableMode);
 
             var fromSource = MappingBuilder.BuildFromSource(
                 model.TypeName,
@@ -71,7 +71,9 @@ namespace Facette.Generator
                 var toSource = MappingBuilder.BuildToSource(
                     model.SourceTypeFullName,
                     model.Properties,
-                    model.HasBaseFacette);
+                    model.HasBaseFacette,
+                    model.TypeName,
+                    model.NullableMode);
                 mappingMethods = mappingMethods + "\n\n" + toSource;
             }
 
@@ -83,6 +85,13 @@ namespace Facette.Generator
                     model.Properties,
                     model.HasBaseFacette);
                 mappingMethods = mappingMethods + "\n\n" + projection;
+
+                var expressionMapping = ExpressionMappingBuilder.Build(
+                    model.TypeName,
+                    model.SourceTypeFullName,
+                    model.Properties,
+                    model.HasBaseFacette);
+                mappingMethods = mappingMethods + "\n\n" + expressionMapping;
             }
 
             // Check if any property is a collection — if so, we need using System.Linq

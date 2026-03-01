@@ -59,6 +59,11 @@ namespace Facette.Generator.Builders
                     {
                         sb.AppendLine(indent + prop.Name + " = " + prop.ConvertContainingType + "." + convertMethod + "(" + sourcePrefix + "." + sourceName + ")" + comma);
                     }
+                    else if (prop.EnumConversion != EnumConversionKind.None)
+                    {
+                        var enumExpr = MappingBuilder.BuildEnumFromSourceExpr(sourcePrefix + "." + sourceName, prop);
+                        sb.AppendLine(indent + prop.Name + " = " + enumExpr + comma);
+                    }
                     else
                     {
                         sb.AppendLine(indent + prop.Name + " = " + sourcePrefix + "." + sourceName + comma);

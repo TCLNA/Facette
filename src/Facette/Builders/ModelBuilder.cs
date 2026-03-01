@@ -138,10 +138,41 @@ namespace Facette.Generator.Builders
                 }
             }
 
-            // Extract generation flags
-            bool generateToSource = GetNamedBoolArg(attribute, "GenerateToSource", true);
-            bool generateProjection = GetNamedBoolArg(attribute, "GenerateProjection", true);
+            // Extract Preset
+            var preset = GetNamedEnumArg(attribute, "Preset", 0); // 0 = Default
+            bool presetCreate = preset == 1;
+            bool presetRead = preset == 2;
+
+            // Apply preset defaults to exclude set
+            if (presetCreate)
+            {
+                exclude.Add("Id");
+                // Also add "{SourceTypeName}Id" pattern
+                if (sourceType != null)
+                {
+                    exclude.Add(sourceType.Name + "Id");
+                }
+            }
+
+            // Extract generation flags (user overrides take priority over preset defaults)
+            bool generateToSource = GetNamedBoolArg(attribute, "GenerateToSource", presetRead ? false : true);
+            bool generateProjection = GetNamedBoolArg(attribute, "GenerateProjection", presetCreate ? false : true);
             bool generateMapper = GetNamedBoolArg(attribute, "GenerateMapper", true);
+
+            // Check if user explicitly set the flags (override preset defaults)
+            foreach (var arg in attribute.NamedArguments)
+            {
+                if (arg.Key == "GenerateToSource" && arg.Value.Value is bool gtv)
+                    generateToSource = gtv;
+                else if (arg.Key == "GenerateProjection" && arg.Value.Value is bool gpv)
+                    generateProjection = gpv;
+            }
+
+            // Extract NullableMode
+            var nullableMode = (Models.NullableMode)GetNamedEnumArg(attribute, "NullableMode", 0);
+
+            // Extract CopyAttributes
+            bool copyAttributes = GetNamedBoolArg(attribute, "CopyAttributes", false);
 
             // Extract NestedDtos named argument
             var nestedDtoOverrides = new HashSet<string>();
@@ -168,7 +199,8 @@ namespace Facette.Generator.Builders
             var facetteLookup = BuildEffectiveLookup(allFacetteLookup, nestedDtoOverrides, ownSourceFullName, referencedSourceTypes, targetSymbol.Name, diagnosticsBuilder, filePath, textSpan, lineSpan);
 
             // Collect properties from source type
-            var autoProperties = GetSourceProperties(sourceType, exclude, include, facetteLookup, compilation);
+            var autoProperties = GetSourceProperties(sourceType, exclude, include, facetteLookup, compilation,
+                copyAttributes, diagnosticsBuilder, filePath, textSpan, lineSpan);
 
             // Scan user-declared properties on the target type for [MapFrom] attributes
             var userDeclaredNames = new HashSet<string>();
@@ -193,6 +225,32 @@ namespace Facette.Generator.Builders
 
                 // Track all user-declared property names so they are not re-generated
                 userDeclaredNames.Add(targetProp.Name);
+
+                // Check for [MapWhen] attribute
+                string conditionalMethod = "";
+                foreach (var attrData in targetProp.GetAttributes())
+                {
+                    if (attrData.AttributeClass != null
+                        && attrData.AttributeClass.ToDisplayString() == "Facette.Abstractions.MapWhenAttribute")
+                    {
+                        if (attrData.ConstructorArguments.Length > 0
+                            && attrData.ConstructorArguments[0].Value is string condName)
+                        {
+                            if (HasStaticBoolMethod(targetSymbol, condName))
+                            {
+                                conditionalMethod = condName;
+                            }
+                            else
+                            {
+                                diagnosticsBuilder.Add(new DiagnosticInfo(
+                                    DiagnosticDescriptors.FCT013_ConditionalMethodNotFound,
+                                    filePath, textSpan, lineSpan,
+                                    new object[] { targetProp.Name, condName, targetSymbol.Name }));
+                            }
+                        }
+                        break;
+                    }
+                }
 
                 // Check for [FacetteIgnore] attribute — exclude from mapping entirely
                 bool isIgnored = false;
@@ -293,7 +351,8 @@ namespace Facette.Generator.Builders
                             convertMethod: convertMethod ?? "",
                             convertBackMethod: convertBackMethod ?? "",
                             convertContainingType: !string.IsNullOrEmpty(convertMethod) ? targetSymbol.Name : "",
-                            flattenedNavigationType: resolveResult.Value.NavigationType ?? ""));
+                            flattenedNavigationType: resolveResult.Value.NavigationType ?? "",
+                            conditionalMethod: conditionalMethod));
                     }
                     else
                     {
@@ -329,6 +388,18 @@ namespace Facette.Generator.Builders
                         var typeDisplay = targetProp.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
                         var isValueType = targetProp.Type.IsValueType;
 
+                        // Detect enum conversion
+                        var enumConv = EnumConversionKind.None;
+                        var sourceEnumType = "";
+                        if (string.IsNullOrEmpty(convertMethod))
+                        {
+                            enumConv = DetectEnumConversion(sourceProp.Type, targetProp.Type);
+                            if (enumConv != EnumConversionKind.None)
+                            {
+                                sourceEnumType = sourceProp.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+                            }
+                        }
+
                         customMappings.Add(new PropertyModel(
                             targetProp.Name,
                             typeDisplay,
@@ -340,7 +411,10 @@ namespace Facette.Generator.Builders
                             ImmutableArray<PropertyModel>.Empty,
                             convertMethod: convertMethod ?? "",
                             convertBackMethod: convertBackMethod ?? "",
-                            convertContainingType: !string.IsNullOrEmpty(convertMethod) ? targetSymbol.Name : ""));
+                            convertContainingType: !string.IsNullOrEmpty(convertMethod) ? targetSymbol.Name : "",
+                            enumConversion: enumConv,
+                            sourceEnumTypeFullName: sourceEnumType,
+                            conditionalMethod: conditionalMethod));
                     }
                 }
                 else
@@ -362,7 +436,35 @@ namespace Facette.Generator.Builders
                             ImmutableArray<PropertyModel>.Empty,
                             flattenedPath: flatResult.Value.Path,
                             flattenedPathHasNullableSegment: flatResult.Value.HasNullableSegment,
-                            flattenedNavigationType: flatResult.Value.NavigationType ?? ""));
+                            flattenedNavigationType: flatResult.Value.NavigationType ?? "",
+                            conditionalMethod: conditionalMethod));
+                    }
+                    else if (!string.IsNullOrEmpty(conditionalMethod))
+                    {
+                        // User-declared property with [MapWhen] — try to find matching source property
+                        var matchingSourceProp = FindSourceProperty(sourceType, targetProp.Name);
+                        if (matchingSourceProp != null)
+                        {
+                            var typeDisplay = targetProp.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+
+                            // Detect enum conversion
+                            var enumConv = DetectEnumConversion(matchingSourceProp.Type, targetProp.Type);
+                            var sourceEnumType = enumConv != EnumConversionKind.None
+                                ? matchingSourceProp.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat) : "";
+
+                            customMappings.Add(new PropertyModel(
+                                targetProp.Name,
+                                typeDisplay,
+                                targetProp.Type.IsValueType,
+                                MappingKind.Custom,
+                                targetProp.Name,
+                                "", "", "",
+                                false, false,
+                                ImmutableArray<PropertyModel>.Empty,
+                                enumConversion: enumConv,
+                                sourceEnumTypeFullName: sourceEnumType,
+                                conditionalMethod: conditionalMethod));
+                        }
                     }
                     // else: User-declared property without [MapFrom] and no flattening match — skip entirely
                 }
@@ -424,7 +526,11 @@ namespace Facette.Generator.Builders
                             prop.FlattenedPath, prop.FlattenedPathHasNullableSegment,
                             prop.ConvertMethod, prop.ConvertBackMethod, prop.ConvertContainingType,
                             prop.FlattenedNavigationType, prop.CollectionConvertMethod,
-                            isInherited: true));
+                            isInherited: true,
+                            enumConversion: prop.EnumConversion,
+                            sourceEnumTypeFullName: prop.SourceEnumTypeFullName,
+                            copiedAttributes: prop.CopiedAttributes,
+                            conditionalMethod: prop.ConditionalMethod));
                     }
                     else
                     {
@@ -501,6 +607,22 @@ namespace Facette.Generator.Builders
                 ? ""
                 : targetSymbol.ContainingNamespace.ToDisplayString();
 
+            // Emit FCT011 for enum conversions that may not be EF-translatable in projections
+            if (generateProjection)
+            {
+                foreach (var prop in properties)
+                {
+                    if (prop.EnumConversion == EnumConversionKind.StringToEnum
+                        || prop.EnumConversion == EnumConversionKind.EnumToEnum)
+                    {
+                        diagnosticsBuilder.Add(new DiagnosticInfo(
+                            DiagnosticDescriptors.FCT011_EnumProjectionWarning,
+                            filePath, textSpan, lineSpan,
+                            new object[] { prop.Name, prop.EnumConversion.ToString() }));
+                    }
+                }
+            }
+
             return new FacetteTargetModel(
                 ns,
                 targetSymbol.Name,
@@ -511,7 +633,9 @@ namespace Facette.Generator.Builders
                 generateMapper,
                 diagnosticsBuilder.ToImmutable(),
                 hasBaseFacette: baseFacetteProperties.Count > 0,
-                additionalSources: additionalSourcesBuilder.ToImmutable()
+                additionalSources: additionalSourcesBuilder.ToImmutable(),
+                nullableMode: nullableMode,
+                copyAttributes: copyAttributes
             );
         }
 
@@ -821,7 +945,12 @@ namespace Facette.Generator.Builders
             HashSet<string> exclude,
             HashSet<string> include,
             Dictionary<string, FacetteDtoInfo> facetteLookup,
-            Compilation compilation)
+            Compilation compilation,
+            bool copyAttributes = false,
+            ImmutableArray<DiagnosticInfo>.Builder diagnosticsBuilder = null,
+            string filePath = "",
+            Microsoft.CodeAnalysis.Text.TextSpan textSpan = default,
+            Microsoft.CodeAnalysis.Text.LinePositionSpan lineSpan = default)
         {
             var builder = ImmutableArray.CreateBuilder<PropertyModel>();
             var seen = new HashSet<string>();
@@ -931,6 +1060,13 @@ namespace Facette.Generator.Builders
                         continue;
                     }
 
+                    // Extract attributes if CopyAttributes enabled
+                    var propCopiedAttrs = ImmutableArray<string>.Empty;
+                    if (copyAttributes && diagnosticsBuilder != null)
+                    {
+                        propCopiedAttrs = ExtractAttributes(prop, diagnosticsBuilder, filePath, textSpan, lineSpan);
+                    }
+
                     // Check if the (unwrapped) property type has a corresponding Facette DTO
                     var unwrappedFullName = propType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
 
@@ -957,14 +1093,19 @@ namespace Facette.Generator.Builders
                             "",
                             isNullable,
                             false,
-                            nestedProps));
+                            nestedProps,
+                            copiedAttributes: propCopiedAttrs));
                     }
                     else
                     {
                         var typeDisplay = prop.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
                         var isValueType = prop.Type.IsValueType;
 
-                        builder.Add(PropertyModel.Direct(prop.Name, typeDisplay, isValueType));
+                        builder.Add(new PropertyModel(
+                            prop.Name, typeDisplay, isValueType,
+                            MappingKind.Direct, prop.Name, "", "", "", false, false,
+                            ImmutableArray<PropertyModel>.Empty,
+                            copiedAttributes: propCopiedAttrs));
                     }
                 }
 
@@ -1108,7 +1249,9 @@ namespace Facette.Generator.Builders
         private static FlattenedPathResult? TryResolveFlattenedPath(INamedTypeSymbol sourceType, string propertyName)
         {
             var result = TryResolveFlattenedPathRecursive(sourceType, propertyName, "", false);
-            if (result != null && result.Value.Path.Contains("."))
+            if (result == null || !result.Value.Path.Contains("."))
+                return null;
+            if (result.Value.Path.Contains("."))
             {
                 // Determine navigation type from first segment
                 var firstSegment = result.Value.Path.Split('.')[0];
@@ -1238,6 +1381,169 @@ namespace Facette.Generator.Builders
                 }
             }
             return false;
+        }
+
+        private static bool HasStaticBoolMethod(INamedTypeSymbol type, string methodName)
+        {
+            foreach (var member in type.GetMembers())
+            {
+                if (member is IMethodSymbol method
+                    && method.IsStatic
+                    && method.Name == methodName
+                    && method.Parameters.Length == 0
+                    && method.ReturnType.SpecialType == SpecialType.System_Boolean)
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        private static int GetNamedEnumArg(AttributeData attribute, string name, int defaultValue)
+        {
+            foreach (var arg in attribute.NamedArguments)
+            {
+                if (arg.Key == name && arg.Value.Value is int val)
+                {
+                    return val;
+                }
+            }
+            return defaultValue;
+        }
+
+        private static bool IsEnumType(ITypeSymbol type)
+        {
+            return type.TypeKind == TypeKind.Enum;
+        }
+
+        private static EnumConversionKind DetectEnumConversion(ITypeSymbol sourceType, ITypeSymbol dtoType)
+        {
+            var srcIsEnum = IsEnumType(sourceType);
+            var dstIsEnum = IsEnumType(dtoType);
+            var dstIsString = dtoType.SpecialType == SpecialType.System_String;
+            var dstIsInt = dtoType.SpecialType == SpecialType.System_Int32;
+            var srcIsString = sourceType.SpecialType == SpecialType.System_String;
+            var srcIsInt = sourceType.SpecialType == SpecialType.System_Int32;
+
+            if (srcIsEnum && dstIsString) return EnumConversionKind.EnumToString;
+            if (srcIsString && dstIsEnum) return EnumConversionKind.StringToEnum;
+            if (srcIsEnum && dstIsInt) return EnumConversionKind.EnumToInt;
+            if (srcIsInt && dstIsEnum) return EnumConversionKind.IntToEnum;
+            if (srcIsEnum && dstIsEnum && !SymbolEqualityComparer.Default.Equals(sourceType, dtoType))
+                return EnumConversionKind.EnumToEnum;
+
+            return EnumConversionKind.None;
+        }
+
+        private static string FormatAttribute(AttributeData attr)
+        {
+            if (attr.AttributeClass == null) return null;
+
+            var attrName = attr.AttributeClass.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+            // Strip "global::" prefix for readability
+            if (attrName.StartsWith("global::"))
+                attrName = attrName.Substring("global::".Length);
+
+            var args = new System.Collections.Generic.List<string>();
+
+            // Constructor arguments
+            foreach (var ctorArg in attr.ConstructorArguments)
+            {
+                var formatted = FormatTypedConstant(ctorArg);
+                if (formatted == null) return null;
+                args.Add(formatted);
+            }
+
+            // Named arguments
+            foreach (var namedArg in attr.NamedArguments)
+            {
+                var formatted = FormatTypedConstant(namedArg.Value);
+                if (formatted == null) return null;
+                args.Add(namedArg.Key + " = " + formatted);
+            }
+
+            if (args.Count == 0)
+                return "[" + attrName + "]";
+            return "[" + attrName + "(" + string.Join(", ", args) + ")]";
+        }
+
+        private static string FormatTypedConstant(TypedConstant tc)
+        {
+            if (tc.Kind == TypedConstantKind.Error) return null;
+
+            if (tc.Kind == TypedConstantKind.Primitive)
+            {
+                if (tc.Value is string s)
+                    return "\"" + s.Replace("\\", "\\\\").Replace("\"", "\\\"") + "\"";
+                if (tc.Value is bool b)
+                    return b ? "true" : "false";
+                if (tc.Value is char c)
+                    return "'" + c + "'";
+                if (tc.Value == null)
+                    return "null";
+                return tc.Value.ToString();
+            }
+
+            if (tc.Kind == TypedConstantKind.Enum)
+            {
+                var enumType = tc.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+                if (enumType.StartsWith("global::"))
+                    enumType = enumType.Substring("global::".Length);
+                return enumType + "." + tc.Value;
+            }
+
+            if (tc.Kind == TypedConstantKind.Type && tc.Value is ITypeSymbol ts)
+            {
+                var typeName = ts.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+                if (typeName.StartsWith("global::"))
+                    typeName = typeName.Substring("global::".Length);
+                return "typeof(" + typeName + ")";
+            }
+
+            if (tc.Kind == TypedConstantKind.Array)
+            {
+                var elements = new System.Collections.Generic.List<string>();
+                foreach (var elem in tc.Values)
+                {
+                    var formatted = FormatTypedConstant(elem);
+                    if (formatted == null) return null;
+                    elements.Add(formatted);
+                }
+                return "new[] { " + string.Join(", ", elements) + " }";
+            }
+
+            return null;
+        }
+
+        private static ImmutableArray<string> ExtractAttributes(IPropertySymbol sourceProp,
+            ImmutableArray<DiagnosticInfo>.Builder diagnosticsBuilder,
+            string filePath, Microsoft.CodeAnalysis.Text.TextSpan textSpan,
+            Microsoft.CodeAnalysis.Text.LinePositionSpan lineSpan)
+        {
+            var builder = ImmutableArray.CreateBuilder<string>();
+            foreach (var attr in sourceProp.GetAttributes())
+            {
+                if (attr.AttributeClass == null) continue;
+                var ns = attr.AttributeClass.ContainingNamespace?.ToDisplayString() ?? "";
+                // Skip Facette, EF Core, and Schema attributes
+                if (ns.StartsWith("Facette.Abstractions")) continue;
+                if (ns.StartsWith("System.ComponentModel.DataAnnotations.Schema")) continue;
+                if (ns.StartsWith("Microsoft.EntityFrameworkCore")) continue;
+
+                var formatted = FormatAttribute(attr);
+                if (formatted != null)
+                {
+                    builder.Add(formatted);
+                }
+                else
+                {
+                    diagnosticsBuilder.Add(new DiagnosticInfo(
+                        DiagnosticDescriptors.FCT012_AttributeReconstructionSkipped,
+                        filePath, textSpan, lineSpan,
+                        new object[] { attr.AttributeClass.Name, sourceProp.Name }));
+                }
+            }
+            return builder.ToImmutable();
         }
 
         private struct CollectionInfo

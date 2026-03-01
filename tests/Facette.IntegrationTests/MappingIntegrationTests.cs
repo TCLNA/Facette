@@ -62,7 +62,7 @@ public class MappingIntegrationTests
             CreatedAt = DateTime.UtcNow
         };
 
-        var dto = user.ToDto();
+        var dto = UserDto.FromSource(user);
 
         Assert.Equal(3, dto.Id);
         Assert.Equal("Carol", dto.FirstName);
@@ -99,7 +99,7 @@ public class MappingIntegrationTests
             new() { Id = 2, FirstName = "C", LastName = "D", Email = "c@d.com", PasswordHash = "h", CreatedAt = DateTime.UtcNow }
         };
 
-        var dtos = users.AsQueryable().ProjectToDto().ToList();
+        var dtos = users.AsQueryable().Select(UserDto.Projection.Compile()).ToList();
 
         Assert.Equal(2, dtos.Count);
         Assert.Equal("A", dtos[0].FirstName);

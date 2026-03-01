@@ -83,5 +83,29 @@ namespace Facette.Generator.Diagnostics
             category: "Facette",
             defaultSeverity: DiagnosticSeverity.Error,
             isEnabledByDefault: true);
+
+        public static readonly DiagnosticDescriptor FCT011_EnumProjectionWarning = new DiagnosticDescriptor(
+            id: "FCT011",
+            title: "Enum conversion may not be EF-translatable in projection",
+            messageFormat: "Property '{0}' uses {1} conversion which may not be translatable by EF Core in LINQ projections",
+            category: "Facette",
+            defaultSeverity: DiagnosticSeverity.Warning,
+            isEnabledByDefault: true);
+
+        public static readonly DiagnosticDescriptor FCT012_AttributeReconstructionSkipped = new DiagnosticDescriptor(
+            id: "FCT012",
+            title: "Attribute could not be reconstructed",
+            messageFormat: "Attribute '{0}' on property '{1}' could not be fully reconstructed and was skipped",
+            category: "Facette",
+            defaultSeverity: DiagnosticSeverity.Info,
+            isEnabledByDefault: true);
+
+        public static readonly DiagnosticDescriptor FCT013_ConditionalMethodNotFound = new DiagnosticDescriptor(
+            id: "FCT013",
+            title: "Conditional method not found or has wrong signature",
+            messageFormat: "[MapWhen] on '{0}' references method '{1}' which was not found as a static parameterless bool-returning method on type '{2}'",
+            category: "Facette",
+            defaultSeverity: DiagnosticSeverity.Error,
+            isEnabledByDefault: true);
     }
 }

@@ -53,6 +53,13 @@ namespace Facette.Generator.Models
         }
     }
 
+    public enum NullableMode
+    {
+        Auto = 0,
+        AllNullable = 1,
+        AllRequired = 2
+    }
+
     public sealed class FacetteTargetModel : IEquatable<FacetteTargetModel>
     {
         public FacetteTargetModel(
@@ -65,7 +72,9 @@ namespace Facette.Generator.Models
             bool generateMapper,
             ImmutableArray<DiagnosticInfo> diagnostics,
             bool hasBaseFacette = false,
-            ImmutableArray<AdditionalSourceInfo> additionalSources = default)
+            ImmutableArray<AdditionalSourceInfo> additionalSources = default,
+            NullableMode nullableMode = NullableMode.Auto,
+            bool copyAttributes = false)
         {
             Namespace = ns;
             TypeName = typeName;
@@ -77,6 +86,8 @@ namespace Facette.Generator.Models
             Diagnostics = diagnostics;
             HasBaseFacette = hasBaseFacette;
             AdditionalSources = additionalSources.IsDefault ? ImmutableArray<AdditionalSourceInfo>.Empty : additionalSources;
+            NullableMode = nullableMode;
+            CopyAttributes = copyAttributes;
         }
 
         public string Namespace { get; }
@@ -89,6 +100,8 @@ namespace Facette.Generator.Models
         public ImmutableArray<DiagnosticInfo> Diagnostics { get; }
         public bool HasBaseFacette { get; }
         public ImmutableArray<AdditionalSourceInfo> AdditionalSources { get; }
+        public NullableMode NullableMode { get; }
+        public bool CopyAttributes { get; }
 
         public bool Equals(FacetteTargetModel other)
         {
@@ -100,6 +113,8 @@ namespace Facette.Generator.Models
             if (GenerateProjection != other.GenerateProjection) return false;
             if (GenerateMapper != other.GenerateMapper) return false;
             if (HasBaseFacette != other.HasBaseFacette) return false;
+            if (NullableMode != other.NullableMode) return false;
+            if (CopyAttributes != other.CopyAttributes) return false;
             if (Properties.Length != other.Properties.Length) return false;
 
             for (int i = 0; i < Properties.Length; i++)
@@ -133,6 +148,8 @@ namespace Facette.Generator.Models
                 hash = hash * 31 + GenerateProjection.GetHashCode();
                 hash = hash * 31 + GenerateMapper.GetHashCode();
                 hash = hash * 31 + HasBaseFacette.GetHashCode();
+                hash = hash * 31 + (int)NullableMode;
+                hash = hash * 31 + CopyAttributes.GetHashCode();
                 hash = hash * 31 + Properties.Length.GetHashCode();
                 return hash;
             }
@@ -146,6 +163,16 @@ namespace Facette.Generator.Models
         Nested,
         Collection,
         Flattened
+    }
+
+    public enum EnumConversionKind
+    {
+        None,
+        EnumToString,
+        StringToEnum,
+        EnumToInt,
+        IntToEnum,
+        EnumToEnum
     }
 
     public sealed class PropertyModel : IEquatable<PropertyModel>
@@ -170,7 +197,11 @@ namespace Facette.Generator.Models
             string flattenedNavigationType = "",
             string collectionConvertMethod = "",
             bool isInherited = false,
-            string sourceParameter = "")
+            string sourceParameter = "",
+            EnumConversionKind enumConversion = EnumConversionKind.None,
+            string sourceEnumTypeFullName = "",
+            ImmutableArray<string> copiedAttributes = default,
+            string conditionalMethod = "")
         {
             Name = name;
             TypeFullName = typeFullName;
@@ -192,6 +223,10 @@ namespace Facette.Generator.Models
             CollectionConvertMethod = collectionConvertMethod ?? "";
             IsInherited = isInherited;
             SourceParameter = sourceParameter ?? "";
+            EnumConversion = enumConversion;
+            SourceEnumTypeFullName = sourceEnumTypeFullName ?? "";
+            CopiedAttributes = copiedAttributes.IsDefault ? ImmutableArray<string>.Empty : copiedAttributes;
+            ConditionalMethod = conditionalMethod ?? "";
         }
 
         public string Name { get; }
@@ -214,6 +249,10 @@ namespace Facette.Generator.Models
         public string CollectionConvertMethod { get; }
         public bool IsInherited { get; }
         public string SourceParameter { get; }
+        public EnumConversionKind EnumConversion { get; }
+        public string SourceEnumTypeFullName { get; }
+        public ImmutableArray<string> CopiedAttributes { get; }
+        public string ConditionalMethod { get; }
 
         public static PropertyModel Direct(string name, string typeFullName, bool isValueType)
         {
@@ -245,6 +284,14 @@ namespace Facette.Generator.Models
             if (CollectionConvertMethod != other.CollectionConvertMethod) return false;
             if (IsInherited != other.IsInherited) return false;
             if (SourceParameter != other.SourceParameter) return false;
+            if (EnumConversion != other.EnumConversion) return false;
+            if (SourceEnumTypeFullName != other.SourceEnumTypeFullName) return false;
+            if (ConditionalMethod != other.ConditionalMethod) return false;
+            if (CopiedAttributes.Length != other.CopiedAttributes.Length) return false;
+            for (int i = 0; i < CopiedAttributes.Length; i++)
+            {
+                if (CopiedAttributes[i] != other.CopiedAttributes[i]) return false;
+            }
             if (NestedProperties.Length != other.NestedProperties.Length) return false;
             for (int i = 0; i < NestedProperties.Length; i++)
             {
@@ -282,6 +329,10 @@ namespace Facette.Generator.Models
                 hash = hash * 31 + (CollectionConvertMethod != null ? CollectionConvertMethod.GetHashCode() : 0);
                 hash = hash * 31 + IsInherited.GetHashCode();
                 hash = hash * 31 + (SourceParameter != null ? SourceParameter.GetHashCode() : 0);
+                hash = hash * 31 + (int)EnumConversion;
+                hash = hash * 31 + (SourceEnumTypeFullName != null ? SourceEnumTypeFullName.GetHashCode() : 0);
+                hash = hash * 31 + (ConditionalMethod != null ? ConditionalMethod.GetHashCode() : 0);
+                hash = hash * 31 + CopiedAttributes.Length.GetHashCode();
                 hash = hash * 31 + NestedProperties.Length.GetHashCode();
                 return hash;
             }

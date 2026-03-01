@@ -34,10 +34,11 @@ namespace Facette.Generator.Builders
                 var comma = i < properties.Length - 1 ? "," : "";
                 var srcRef = string.IsNullOrEmpty(prop.SourceParameter) ? "source" : prop.SourceParameter;
 
+                string valueExpr;
+
                 if (prop.MappingKind == MappingKind.Flattened)
                 {
-                    var flatExpr = ProjectionBuilder.BuildFlattenedExpression(srcRef, prop);
-                    sb.AppendLine("            " + prop.Name + " = " + flatExpr + comma);
+                    valueExpr = ProjectionBuilder.BuildFlattenedExpression(srcRef, prop);
                 }
                 else if (prop.MappingKind == MappingKind.Collection)
                 {
@@ -53,27 +54,29 @@ namespace Facette.Generator.Builders
                         collExpr = srcRef + "." + collSourceName + toMethod;
                     }
 
-                    string assignment;
                     if (prop.IsNullable)
                     {
-                        assignment = prop.Name + " = " + srcRef + "." + collSourceName + " != null ? " + collExpr + " : null";
+                        valueExpr = srcRef + "." + collSourceName + " != null ? " + collExpr + " : null";
                     }
                     else
                     {
-                        assignment = prop.Name + " = " + collExpr;
+                        valueExpr = collExpr;
                     }
-                    sb.AppendLine("            " + assignment + comma);
+                    sb.AppendLine("            " + prop.Name + " = " + valueExpr + comma);
+                    continue;
                 }
                 else if (prop.MappingKind == MappingKind.Nested)
                 {
                     if (prop.IsNullable)
                     {
-                        sb.AppendLine("            " + prop.Name + " = " + srcRef + "." + prop.Name + " != null ? " + prop.NestedDtoTypeFullName + ".FromSource(" + srcRef + "." + prop.Name + ") : null" + comma);
+                        valueExpr = srcRef + "." + prop.Name + " != null ? " + prop.NestedDtoTypeFullName + ".FromSource(" + srcRef + "." + prop.Name + ") : null";
                     }
                     else
                     {
-                        sb.AppendLine("            " + prop.Name + " = " + prop.NestedDtoTypeFullName + ".FromSource(" + srcRef + "." + prop.Name + ")" + comma);
+                        valueExpr = prop.NestedDtoTypeFullName + ".FromSource(" + srcRef + "." + prop.Name + ")";
                     }
+                    sb.AppendLine("            " + prop.Name + " = " + valueExpr + comma);
+                    continue;
                 }
                 else
                 {
@@ -82,13 +85,25 @@ namespace Facette.Generator.Builders
                     var convertMethod = prop.ConvertMethod;
                     if (!string.IsNullOrEmpty(convertMethod))
                     {
-                        sb.AppendLine("            " + prop.Name + " = " + prop.ConvertContainingType + "." + convertMethod + "(" + srcRef + "." + sourceName + ")" + comma);
+                        valueExpr = prop.ConvertContainingType + "." + convertMethod + "(" + srcRef + "." + sourceName + ")";
+                    }
+                    else if (prop.EnumConversion != EnumConversionKind.None)
+                    {
+                        valueExpr = BuildEnumFromSourceExpr(srcRef + "." + sourceName, prop);
                     }
                     else
                     {
-                        sb.AppendLine("            " + prop.Name + " = " + srcRef + "." + sourceName + comma);
+                        valueExpr = srcRef + "." + sourceName;
                     }
                 }
+
+                // Wrap with conditional if needed
+                if (!string.IsNullOrEmpty(prop.ConditionalMethod))
+                {
+                    valueExpr = dtoTypeName + "." + prop.ConditionalMethod + "() ? " + valueExpr + " : default";
+                }
+
+                sb.AppendLine("            " + prop.Name + " = " + valueExpr + comma);
             }
 
             sb.AppendLine("        };");
@@ -107,7 +122,9 @@ namespace Facette.Generator.Builders
         public static string BuildToSource(
             string sourceTypeFullName,
             ImmutableArray<PropertyModel> properties,
-            bool hasBaseFacette = false)
+            bool hasBaseFacette = false,
+            string dtoTypeName = "",
+            NullableMode nullableMode = NullableMode.Auto)
         {
             // Separate flattened properties from regular ones; skip additional source properties
             var regularProperties = ImmutableArray.CreateBuilder<PropertyModel>();
@@ -122,7 +139,8 @@ namespace Facette.Generator.Builders
                     flattenedProperties.Add(prop);
                     continue;
                 }
-                if (!string.IsNullOrEmpty(prop.ConvertMethod) && string.IsNullOrEmpty(prop.ConvertBackMethod))
+                if (!string.IsNullOrEmpty(prop.ConvertMethod) && string.IsNullOrEmpty(prop.ConvertBackMethod)
+                    && prop.EnumConversion == EnumConversionKind.None)
                     continue;
                 regularProperties.Add(prop);
             }
@@ -216,14 +234,33 @@ namespace Facette.Generator.Builders
                 {
                     var targetName = prop.MappingKind == MappingKind.Custom ? prop.SourcePropertyName : prop.Name;
                     var convertBackMethod = prop.ConvertBackMethod;
+                    string valueExpr;
                     if (!string.IsNullOrEmpty(convertBackMethod))
                     {
-                        sb.AppendLine("            " + targetName + " = " + prop.ConvertContainingType + "." + convertBackMethod + "(this." + prop.Name + ")" + comma);
+                        valueExpr = prop.ConvertContainingType + "." + convertBackMethod + "(this." + prop.Name + ")";
+                    }
+                    else if (prop.EnumConversion != EnumConversionKind.None)
+                    {
+                        valueExpr = BuildEnumToSourceExpr("this." + prop.Name, prop);
                     }
                     else
                     {
-                        sb.AppendLine("            " + targetName + " = this." + prop.Name + comma);
+                        valueExpr = "this." + prop.Name;
                     }
+
+                    // Wrap with conditional if needed
+                    if (!string.IsNullOrEmpty(prop.ConditionalMethod) && !string.IsNullOrEmpty(dtoTypeName))
+                    {
+                        valueExpr = dtoTypeName + "." + prop.ConditionalMethod + "() ? " + valueExpr + " : default";
+                    }
+
+                    // When AllNullable, value types are int? but source expects int — unwrap with ?? default
+                    if (nullableMode == NullableMode.AllNullable && prop.IsValueType && !prop.IsNullable)
+                    {
+                        valueExpr = "(" + valueExpr + ") ?? default";
+                    }
+
+                    sb.AppendLine("            " + targetName + " = " + valueExpr + comma);
                 }
             }
 
@@ -274,6 +311,49 @@ namespace Facette.Generator.Builders
             sb.AppendLine("    }");
 
             return sb.ToString().TrimEnd();
+        }
+
+        internal static string BuildEnumFromSourceExpr(string sourceExpr, PropertyModel prop)
+        {
+            switch (prop.EnumConversion)
+            {
+                case EnumConversionKind.EnumToString:
+                    return sourceExpr + ".ToString()";
+                case EnumConversionKind.StringToEnum:
+                    return "(" + prop.TypeFullName + ")System.Enum.Parse(typeof(" + prop.TypeFullName + "), " + sourceExpr + ")";
+                case EnumConversionKind.EnumToInt:
+                    return "(int)" + sourceExpr;
+                case EnumConversionKind.IntToEnum:
+                    return "(" + prop.TypeFullName + ")" + sourceExpr;
+                case EnumConversionKind.EnumToEnum:
+                    return "(" + prop.TypeFullName + ")(int)" + sourceExpr;
+                default:
+                    return sourceExpr;
+            }
+        }
+
+        internal static string BuildEnumToSourceExpr(string dtoExpr, PropertyModel prop)
+        {
+            // Reverse of FromSource
+            switch (prop.EnumConversion)
+            {
+                case EnumConversionKind.EnumToString:
+                    // String -> Enum (reverse)
+                    return "(" + prop.SourceEnumTypeFullName + ")System.Enum.Parse(typeof(" + prop.SourceEnumTypeFullName + "), " + dtoExpr + ")";
+                case EnumConversionKind.StringToEnum:
+                    // Enum -> String (reverse)
+                    return dtoExpr + ".ToString()";
+                case EnumConversionKind.EnumToInt:
+                    // Int -> Enum (reverse)
+                    return "(" + prop.SourceEnumTypeFullName + ")" + dtoExpr;
+                case EnumConversionKind.IntToEnum:
+                    // Enum -> Int (reverse)
+                    return "(int)" + dtoExpr;
+                case EnumConversionKind.EnumToEnum:
+                    return "(" + prop.SourceEnumTypeFullName + ")(int)" + dtoExpr;
+                default:
+                    return dtoExpr;
+            }
         }
     }
 }
