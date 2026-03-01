@@ -46,4 +46,9 @@ No boilerplate. No runtime overhead. Just annotate and go.
 
 ## Credits
 
-Facette was heavily inspired by [Mapperly](https://github.com/riok/mapperly), a compile-time object mapper for .NET that pioneered the source-generator approach to mapping. Mapperly's design philosophy — zero runtime overhead, no reflection, and full IDE support — directly influenced Facette's architecture and goals.
+Facette was heavily inspired by:
+
+- [Facet](https://github.com/Tim-Maes/Facet) — a source generator that generates DTOs, mappings, and LINQ projections from domain models, with a similar attribute-driven approach
+- [Mapperly](https://github.com/riok/mapperly) — a compile-time object mapper for .NET that pioneered the source-generator approach to mapping
+
+Their design philosophy — zero runtime overhead, no reflection, and full IDE support — directly influenced Facette's architecture and goals.

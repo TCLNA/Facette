@@ -74,7 +74,7 @@ Full documentation is available in the [mdbook](docs/) — run `mdbook serve doc
 
 ## Credits
 
-Facette was heavily inspired by [Mapperly](https://github.com/riok/mapperly).
+Facette was heavily inspired by [Facet](https://github.com/Tim-Maes/Facet) and [Mapperly](https://github.com/riok/mapperly).
 
 ## License
 
