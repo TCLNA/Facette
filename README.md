@@ -1,6 +1,10 @@
-# Facette
+<p align="center">
+  <img src="docs/facette.png" alt="Facette logo" width="200" />
+</p>
 
 A C# source generator that auto-generates DTO mapping code from `[Facette]`-annotated partial records — zero reflection, zero runtime dependencies.
+
+> This project is entirely vibe coded with [Claude Code](https://claude.com/claude-code).
 
 ## Features
 
