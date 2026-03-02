@@ -5,5 +5,17 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <NoWarn>$(NoWarn);1591</NoWarn>
+
+    <!-- NuGet packaging -->
+    <Version>1.0.0</Version>
+    <Authors>TCLNA</Authors>
+    <Description>Roslyn source generator that auto-generates DTO mapping code from [Facette]-annotated partial records.</Description>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageProjectUrl>https://github.com/TCLNA/Facette</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/TCLNA/Facette.git</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageTags>source-generator;dto;mapping;roslyn;codegen</PackageTags>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageIcon>icon.png</PackageIcon>
   </PropertyGroup>
 </Project>

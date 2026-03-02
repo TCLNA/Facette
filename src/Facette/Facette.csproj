@@ -5,6 +5,8 @@
     <IsRoslynComponent>true</IsRoslynComponent>
     <NoWarn>$(NoWarn);RS2008;NU5128</NoWarn>
     <IncludeBuildOutput>false</IncludeBuildOutput>
+    <DevelopmentDependency>true</DevelopmentDependency>
+    <Description>Roslyn source generator that auto-generates DTO mapping, LINQ projections, and mapper extensions from [Facette]-annotated partial records.</Description>
   </PropertyGroup>
 
   <ItemGroup>
@@ -12,10 +14,15 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\Facette.Abstractions\Facette.Abstractions.csproj" />
+    <ProjectReference Include="..\Facette.Abstractions\Facette.Abstractions.csproj" PrivateAssets="all" />
   </ItemGroup>
 
   <ItemGroup>
+    <!-- Pack the generator DLL into the analyzers folder -->
     <None Include="$(OutputPath)\$(AssemblyName).dll" Pack="true" PackagePath="analyzers/dotnet/cs" />
+    <!-- Pack the abstractions DLL so consumers get the attributes at compile time -->
+    <None Include="$(OutputPath)\Facette.Abstractions.dll" Pack="true" PackagePath="lib/netstandard2.0" />
+    <None Include="$(MSBuildThisFileDirectory)../../README.md" Pack="true" PackagePath="/" />
+    <None Include="$(MSBuildThisFileDirectory)../../icon.png" Pack="true" PackagePath="/" Condition="Exists('$(MSBuildThisFileDirectory)../../icon.png')" />
   </ItemGroup>
 </Project>
