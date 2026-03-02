@@ -6,6 +6,11 @@ A C# source generator that auto-generates DTO mapping code from `[Facette]`-anno
 
 > This project is entirely vibe coded with [Claude Code](https://claude.com/claude-code).
 
+[![NuGet](https://img.shields.io/nuget/v/Facette.svg)](https://www.nuget.org/packages/Facette)
+[![NuGet Downloads](https://img.shields.io/nuget/dt/Facette.svg)](https://www.nuget.org/packages/Facette)
+[![License](https://img.shields.io/github/license/TCLNA/Facette)](https://github.com/TCLNA/Facette/blob/main/LICENSE)
+[![Build](https://img.shields.io/github/actions/workflow/status/TCLNA/Facette/dotnet.yml?branch=main)](https://github.com/TCLNA/Facette/actions)
+  
 ## Features
 
 - **Compile-time mapping** — `FromSource()`, `ToSource()`, and LINQ `Projection` generated via Roslyn
