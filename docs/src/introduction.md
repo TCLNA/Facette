@@ -2,6 +2,8 @@
 
 A C# source generator that auto-generates DTO mapping code from `[Facette]`-annotated partial records — zero reflection, zero runtime dependencies.
 
+[GitHub Repository](https://github.com/TCLNA/Facette)
+
 > This project is entirely vibe coded with [Claude Code](https://claude.com/claude-code).
 
 # Introduction

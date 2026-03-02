@@ -2,3 +2,6 @@
 title = "Facette"
 authors = ["Thomas Colonna"]
 language = "en"
+
+[output.html]
+git-repository-url = "https://github.com/TCLNA/Facette"
