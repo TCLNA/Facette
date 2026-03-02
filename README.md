@@ -9,7 +9,7 @@ A C# source generator that auto-generates DTO mapping code from `[Facette]`-anno
 [![NuGet](https://img.shields.io/nuget/v/Facette.svg)](https://www.nuget.org/packages/Facette)
 [![NuGet Downloads](https://img.shields.io/nuget/dt/Facette.svg)](https://www.nuget.org/packages/Facette)
 [![License](https://img.shields.io/github/license/TCLNA/Facette)](https://github.com/TCLNA/Facette/blob/main/LICENSE)
-[![Build](https://img.shields.io/github/actions/workflow/status/TCLNA/Facette/dotnet.yml?branch=main)](https://github.com/TCLNA/Facette/actions)
+[![Build](https://img.shields.io/github/actions/workflow/status/TCLNA/Facette/publish.yml)](https://github.com/TCLNA/Facette/actions)
   
 ## Features
 
