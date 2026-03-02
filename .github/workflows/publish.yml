@@ -43,9 +43,9 @@ jobs:
 
       - name: Pack
         run: |
-          dotnet pack src/Facette.Abstractions -c Release -p:Version=${{ steps.version.outputs.VERSION }} --no-build -o ./nupkgs
-          dotnet pack src/Facette -c Release -p:Version=${{ steps.version.outputs.VERSION }} --no-build -o ./nupkgs
-          dotnet pack src/Facette.EntityFrameworkCore -c Release -p:Version=${{ steps.version.outputs.VERSION }} --no-build -o ./nupkgs
+          dotnet pack src/Facette.Abstractions -c Release -p:Version=${{ steps.version.outputs.VERSION }} -o ./nupkgs
+          dotnet pack src/Facette -c Release -p:Version=${{ steps.version.outputs.VERSION }} -o ./nupkgs
+          dotnet pack src/Facette.EntityFrameworkCore -c Release -p:Version=${{ steps.version.outputs.VERSION }} -o ./nupkgs
 
       - name: Push to NuGet
         run: dotnet nuget push ./nupkgs/*.nupkg --api-key ${{ secrets.NUGET_API_KEY }} --source https://api.nuget.org/v3/index.json --skip-duplicate
