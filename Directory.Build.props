@@ -17,5 +17,6 @@
     <PackageTags>source-generator;dto;mapping;roslyn;codegen</PackageTags>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <PackageIcon>icon.png</PackageIcon>
+    <IsPackable>false</IsPackable>
   </PropertyGroup>
 </Project>

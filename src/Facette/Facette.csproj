@@ -4,6 +4,7 @@
     <EnforceExtendedAnalyzerRules>true</EnforceExtendedAnalyzerRules>
     <IsRoslynComponent>true</IsRoslynComponent>
     <NoWarn>$(NoWarn);RS2008;NU5128</NoWarn>
+    <IsPackable>true</IsPackable>
     <IncludeBuildOutput>false</IncludeBuildOutput>
     <DevelopmentDependency>true</DevelopmentDependency>
     <Description>Roslyn source generator that auto-generates DTO mapping, LINQ projections, and mapper extensions from [Facette]-annotated partial records.</Description>
