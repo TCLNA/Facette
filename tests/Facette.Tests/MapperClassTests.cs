@@ -86,6 +86,114 @@ public class MapperClassTests
     }
 
     [Fact]
+    public void Generator_MapperClass_IncludesCollectionToDto()
+    {
+        var source = """
+            using Facette.Abstractions;
+
+            namespace TestApp;
+
+            public class Customer
+            {
+                public int Id { get; set; }
+                public string Name { get; set; }
+            }
+
+            [Facette(typeof(Customer))]
+            public partial record CustomerDto;
+            """;
+
+        var result = GeneratorTestHelper.RunGenerator(source);
+        var mapperCode = result.GeneratedTrees
+            .First(t => t.FilePath.Contains("CustomerDtoMapper.g.cs"))
+            .GetText().ToString();
+
+        Assert.Contains("IEnumerable<CustomerDto> ToDto(this IEnumerable<global::TestApp.Customer> sources)", mapperCode);
+        Assert.Contains("sources.Select(CustomerDto.FromSource)", mapperCode);
+    }
+
+    [Fact]
+    public void Generator_MapperClass_IncludesCollectionToDtoList()
+    {
+        var source = """
+            using Facette.Abstractions;
+
+            namespace TestApp;
+
+            public class Customer
+            {
+                public int Id { get; set; }
+                public string Name { get; set; }
+            }
+
+            [Facette(typeof(Customer))]
+            public partial record CustomerDto;
+            """;
+
+        var result = GeneratorTestHelper.RunGenerator(source);
+        var mapperCode = result.GeneratedTrees
+            .First(t => t.FilePath.Contains("CustomerDtoMapper.g.cs"))
+            .GetText().ToString();
+
+        Assert.Contains("List<CustomerDto> ToDtoList(this IEnumerable<global::TestApp.Customer> sources)", mapperCode);
+        Assert.Contains(".FromSource).ToList()", mapperCode);
+    }
+
+    [Fact]
+    public void Generator_MapperClass_IncludesCollectionToSource()
+    {
+        var source = """
+            using Facette.Abstractions;
+
+            namespace TestApp;
+
+            public class Customer
+            {
+                public int Id { get; set; }
+                public string Name { get; set; }
+            }
+
+            [Facette(typeof(Customer))]
+            public partial record CustomerDto;
+            """;
+
+        var result = GeneratorTestHelper.RunGenerator(source);
+        var mapperCode = result.GeneratedTrees
+            .First(t => t.FilePath.Contains("CustomerDtoMapper.g.cs"))
+            .GetText().ToString();
+
+        Assert.Contains("IEnumerable<global::TestApp.Customer> ToSource(this IEnumerable<CustomerDto> dtos)", mapperCode);
+        Assert.Contains("dtos.Select(dto => dto.ToSource())", mapperCode);
+    }
+
+    [Fact]
+    public void Generator_MapperClass_IncludesCollectionToSourceList()
+    {
+        var source = """
+            using Facette.Abstractions;
+
+            namespace TestApp;
+
+            public class Customer
+            {
+                public int Id { get; set; }
+                public string Name { get; set; }
+            }
+
+            [Facette(typeof(Customer))]
+            public partial record CustomerDto;
+            """;
+
+        var result = GeneratorTestHelper.RunGenerator(source);
+        var mapperCode = result.GeneratedTrees
+            .First(t => t.FilePath.Contains("CustomerDtoMapper.g.cs"))
+            .GetText().ToString();
+
+        Assert.Contains("List<global::TestApp.Customer> ToSourceList(this IEnumerable<CustomerDto> dtos)", mapperCode);
+        Assert.Contains("dtos.Select(dto => dto.ToSource()).ToList()", mapperCode);
+    }
+
+    [Fact]
     public void Generator_WithGenerateMapperFalse_OmitsMapperClass()
     {
         var source = """

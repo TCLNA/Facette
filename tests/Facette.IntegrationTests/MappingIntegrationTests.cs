@@ -107,6 +107,80 @@ public class MappingIntegrationTests
     }
 
     [Fact]
+    public void CollectionToDto_MapsAllItems()
+    {
+        var users = new List<User>
+        {
+            new() { Id = 1, FirstName = "Alice", LastName = "Smith", Email = "a@b.com", PasswordHash = "h", CreatedAt = DateTime.UtcNow },
+            new() { Id = 2, FirstName = "Bob", LastName = "Jones", Email = "b@c.com", PasswordHash = "h", CreatedAt = DateTime.UtcNow }
+        };
+
+        var dtos = UserDtoMapper.ToDto(users).ToList();
+
+        Assert.Equal(2, dtos.Count);
+        Assert.Equal("Alice", dtos[0].FirstName);
+        Assert.Equal("Bob", dtos[1].FirstName);
+    }
+
+    [Fact]
+    public void CollectionToDtoList_ReturnsMaterializedList()
+    {
+        var users = new List<User>
+        {
+            new() { Id = 1, FirstName = "Alice", LastName = "Smith", Email = "a@b.com", PasswordHash = "h", CreatedAt = DateTime.UtcNow },
+            new() { Id = 2, FirstName = "Bob", LastName = "Jones", Email = "b@c.com", PasswordHash = "h", CreatedAt = DateTime.UtcNow },
+            new() { Id = 3, FirstName = "Carol", LastName = "Lee", Email = "c@d.com", PasswordHash = "h", CreatedAt = DateTime.UtcNow }
+        };
+
+        var dtos = UserDtoMapper.ToDtoList(users);
+
+        Assert.IsType<List<UserDto>>(dtos);
+        Assert.Equal(3, dtos.Count);
+        Assert.Equal("Carol", dtos[2].FirstName);
+    }
+
+    [Fact]
+    public void CollectionToSource_MapsAllItemsBack()
+    {
+        var dtos = new List<UserDto>
+        {
+            new() { Id = 1, FirstName = "Alice", LastName = "Smith", Email = "a@b.com", CreatedAt = DateTime.UtcNow, Tags = new[] { "t" } },
+            new() { Id = 2, FirstName = "Bob", LastName = "Jones", Email = "b@c.com", CreatedAt = DateTime.UtcNow, Tags = new[] { "t" } }
+        };
+
+        var users = UserDtoMapper.ToSource(dtos).ToList();
+
+        Assert.Equal(2, users.Count);
+        Assert.Equal("Alice", users[0].FirstName);
+        Assert.Equal("Bob", users[1].FirstName);
+    }
+
+    [Fact]
+    public void CollectionToSourceList_ReturnsMaterializedList()
+    {
+        var dtos = new List<UserDto>
+        {
+            new() { Id = 1, FirstName = "Alice", LastName = "Smith", Email = "a@b.com", CreatedAt = DateTime.UtcNow, Tags = new[] { "t" } },
+            new() { Id = 2, FirstName = "Bob", LastName = "Jones", Email = "b@c.com", CreatedAt = DateTime.UtcNow, Tags = new[] { "t" } }
+        };
+
+        var users = UserDtoMapper.ToSourceList(dtos);
+
+        Assert.IsType<List<User>>(users);
+        Assert.Equal(2, users.Count);
+    }
+
+    [Fact]
+    public void CollectionToDto_WorksWithEmptyCollection()
+    {
+        var users = new List<User>();
+
+        var dtos = UserDtoMapper.ToDtoList(users);
+
+        Assert.Empty(dtos);
+    }
+
+    [Fact]
     public void ExcludedProperty_NotOnDto()
     {
         var props = typeof(UserDto).GetProperties();
