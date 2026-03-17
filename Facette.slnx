@@ -10,4 +10,7 @@
     <Project Path="tests/Facette.IntegrationTests/Facette.IntegrationTests.csproj" />
     <Project Path="tests/Facette.Tests/Facette.Tests.csproj" />
   </Folder>
+  <Folder Name="/benchmarks/">
+    <Project Path="benchmarks/Facette.Benchmarks/Facette.Benchmarks.csproj" />
+  </Folder>
 </Solution>
