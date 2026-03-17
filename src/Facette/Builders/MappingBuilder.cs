@@ -315,44 +315,41 @@ namespace Facette.Generator.Builders
 
         internal static string BuildEnumFromSourceExpr(string sourceExpr, PropertyModel prop)
         {
-            switch (prop.EnumConversion)
-            {
-                case EnumConversionKind.EnumToString:
-                    return sourceExpr + ".ToString()";
-                case EnumConversionKind.StringToEnum:
-                    return "(" + prop.TypeFullName + ")System.Enum.Parse(typeof(" + prop.TypeFullName + "), " + sourceExpr + ")";
-                case EnumConversionKind.EnumToInt:
-                    return "(int)" + sourceExpr;
-                case EnumConversionKind.IntToEnum:
-                    return "(" + prop.TypeFullName + ")" + sourceExpr;
-                case EnumConversionKind.EnumToEnum:
-                    return "(" + prop.TypeFullName + ")(int)" + sourceExpr;
-                default:
-                    return sourceExpr;
-            }
+            return BuildEnumConversionExpr(sourceExpr, prop.EnumConversion, prop.TypeFullName, prop.SourceEnumTypeFullName, reverse: false);
         }
 
         internal static string BuildEnumToSourceExpr(string dtoExpr, PropertyModel prop)
         {
-            // Reverse of FromSource
-            switch (prop.EnumConversion)
+            return BuildEnumConversionExpr(dtoExpr, prop.EnumConversion, prop.TypeFullName, prop.SourceEnumTypeFullName, reverse: true);
+        }
+
+        private static string BuildEnumConversionExpr(string expr, EnumConversionKind kind, string dtoTypeFullName, string sourceEnumTypeFullName, bool reverse)
+        {
+            // When reverse=true, swap the roles: EnumToString becomes StringToEnum, etc.
+            switch (kind)
             {
                 case EnumConversionKind.EnumToString:
-                    // String -> Enum (reverse)
-                    return "(" + prop.SourceEnumTypeFullName + ")System.Enum.Parse(typeof(" + prop.SourceEnumTypeFullName + "), " + dtoExpr + ")";
+                    if (!reverse)
+                        return expr + ".ToString()";
+                    return "(" + sourceEnumTypeFullName + ")System.Enum.Parse(typeof(" + sourceEnumTypeFullName + "), " + expr + ")";
                 case EnumConversionKind.StringToEnum:
-                    // Enum -> String (reverse)
-                    return dtoExpr + ".ToString()";
+                    if (!reverse)
+                        return "(" + dtoTypeFullName + ")System.Enum.Parse(typeof(" + dtoTypeFullName + "), " + expr + ")";
+                    return expr + ".ToString()";
                 case EnumConversionKind.EnumToInt:
-                    // Int -> Enum (reverse)
-                    return "(" + prop.SourceEnumTypeFullName + ")" + dtoExpr;
+                    if (!reverse)
+                        return "(int)" + expr;
+                    return "(" + sourceEnumTypeFullName + ")" + expr;
                 case EnumConversionKind.IntToEnum:
-                    // Enum -> Int (reverse)
-                    return "(int)" + dtoExpr;
+                    if (!reverse)
+                        return "(" + dtoTypeFullName + ")" + expr;
+                    return "(int)" + expr;
                 case EnumConversionKind.EnumToEnum:
-                    return "(" + prop.SourceEnumTypeFullName + ")(int)" + dtoExpr;
+                    if (!reverse)
+                        return "(" + dtoTypeFullName + ")(int)" + expr;
+                    return "(" + sourceEnumTypeFullName + ")(int)" + expr;
                 default:
-                    return dtoExpr;
+                    return expr;
             }
         }
     }
