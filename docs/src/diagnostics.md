@@ -19,6 +19,7 @@ Facette emits compile-time diagnostics to help you catch configuration errors ea
 | **FCT011** | Warning | Enum projection warning | An enum conversion (e.g., `.ToString()`) in a LINQ projection may not be translatable by EF Core. |
 | **FCT012** | Info | Attribute reconstruction skipped | When `CopyAttributes = true`, an attribute on the source property couldn't be fully reconstructed and was skipped. |
 | **FCT013** | Error | Conditional method invalid | The method referenced by `[MapWhen]` wasn't found, isn't `static`, isn't parameterless, or doesn't return `bool`. |
+| **FCT099** | Warning | Internal generator error | An unexpected error occurred during code generation. Please [report it](https://github.com/TCLNA/Facette/issues). |
 
 ## Treating warnings as errors
 
