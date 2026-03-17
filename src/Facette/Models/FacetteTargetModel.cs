@@ -5,6 +5,12 @@ using Microsoft.CodeAnalysis;
 
 namespace Facette.Generator.Models
 {
+    internal static class HashCode
+    {
+        internal const int Seed = 17;
+        internal const int Factor = 31;
+    }
+
     public sealed class DiagnosticInfo : IEquatable<DiagnosticInfo>
     {
         public DiagnosticInfo(DiagnosticDescriptor descriptor, string filePath, Microsoft.CodeAnalysis.Text.TextSpan textSpan, Microsoft.CodeAnalysis.Text.LinePositionSpan lineSpan, object[] messageArgs)
@@ -44,10 +50,10 @@ namespace Facette.Generator.Models
         {
             unchecked
             {
-                var hash = 17;
-                hash = hash * 31 + (Descriptor.Id != null ? Descriptor.Id.GetHashCode() : 0);
-                hash = hash * 31 + (FilePath != null ? FilePath.GetHashCode() : 0);
-                hash = hash * 31 + TextSpan.GetHashCode();
+                var hash = HashCode.Seed;
+                hash = hash * HashCode.Factor + (Descriptor.Id != null ? Descriptor.Id.GetHashCode() : 0);
+                hash = hash * HashCode.Factor + (FilePath != null ? FilePath.GetHashCode() : 0);
+                hash = hash * HashCode.Factor + TextSpan.GetHashCode();
                 return hash;
             }
         }
@@ -140,17 +146,17 @@ namespace Facette.Generator.Models
         {
             unchecked
             {
-                var hash = 17;
-                hash = hash * 31 + (Namespace != null ? Namespace.GetHashCode() : 0);
-                hash = hash * 31 + (TypeName != null ? TypeName.GetHashCode() : 0);
-                hash = hash * 31 + (SourceTypeFullName != null ? SourceTypeFullName.GetHashCode() : 0);
-                hash = hash * 31 + GenerateToSource.GetHashCode();
-                hash = hash * 31 + GenerateProjection.GetHashCode();
-                hash = hash * 31 + GenerateMapper.GetHashCode();
-                hash = hash * 31 + HasBaseFacette.GetHashCode();
-                hash = hash * 31 + (int)NullableMode;
-                hash = hash * 31 + CopyAttributes.GetHashCode();
-                hash = hash * 31 + Properties.Length.GetHashCode();
+                var hash = HashCode.Seed;
+                hash = hash * HashCode.Factor + (Namespace != null ? Namespace.GetHashCode() : 0);
+                hash = hash * HashCode.Factor + (TypeName != null ? TypeName.GetHashCode() : 0);
+                hash = hash * HashCode.Factor + (SourceTypeFullName != null ? SourceTypeFullName.GetHashCode() : 0);
+                hash = hash * HashCode.Factor + GenerateToSource.GetHashCode();
+                hash = hash * HashCode.Factor + GenerateProjection.GetHashCode();
+                hash = hash * HashCode.Factor + GenerateMapper.GetHashCode();
+                hash = hash * HashCode.Factor + HasBaseFacette.GetHashCode();
+                hash = hash * HashCode.Factor + (int)NullableMode;
+                hash = hash * HashCode.Factor + CopyAttributes.GetHashCode();
+                hash = hash * HashCode.Factor + Properties.Length.GetHashCode();
                 return hash;
             }
         }
@@ -309,31 +315,31 @@ namespace Facette.Generator.Models
         {
             unchecked
             {
-                var hash = 17;
-                hash = hash * 31 + (Name != null ? Name.GetHashCode() : 0);
-                hash = hash * 31 + (TypeFullName != null ? TypeFullName.GetHashCode() : 0);
-                hash = hash * 31 + IsValueType.GetHashCode();
-                hash = hash * 31 + (int)MappingKind;
-                hash = hash * 31 + (SourcePropertyName != null ? SourcePropertyName.GetHashCode() : 0);
-                hash = hash * 31 + (NestedDtoTypeName != null ? NestedDtoTypeName.GetHashCode() : 0);
-                hash = hash * 31 + (NestedDtoTypeFullName != null ? NestedDtoTypeFullName.GetHashCode() : 0);
-                hash = hash * 31 + (CollectionElementTypeFullName != null ? CollectionElementTypeFullName.GetHashCode() : 0);
-                hash = hash * 31 + IsNullable.GetHashCode();
-                hash = hash * 31 + IsArray.GetHashCode();
-                hash = hash * 31 + (FlattenedPath != null ? FlattenedPath.GetHashCode() : 0);
-                hash = hash * 31 + FlattenedPathHasNullableSegment.GetHashCode();
-                hash = hash * 31 + (ConvertMethod != null ? ConvertMethod.GetHashCode() : 0);
-                hash = hash * 31 + (ConvertBackMethod != null ? ConvertBackMethod.GetHashCode() : 0);
-                hash = hash * 31 + (ConvertContainingType != null ? ConvertContainingType.GetHashCode() : 0);
-                hash = hash * 31 + (FlattenedNavigationType != null ? FlattenedNavigationType.GetHashCode() : 0);
-                hash = hash * 31 + (CollectionConvertMethod != null ? CollectionConvertMethod.GetHashCode() : 0);
-                hash = hash * 31 + IsInherited.GetHashCode();
-                hash = hash * 31 + (SourceParameter != null ? SourceParameter.GetHashCode() : 0);
-                hash = hash * 31 + (int)EnumConversion;
-                hash = hash * 31 + (SourceEnumTypeFullName != null ? SourceEnumTypeFullName.GetHashCode() : 0);
-                hash = hash * 31 + (ConditionalMethod != null ? ConditionalMethod.GetHashCode() : 0);
-                hash = hash * 31 + CopiedAttributes.Length.GetHashCode();
-                hash = hash * 31 + NestedProperties.Length.GetHashCode();
+                var hash = HashCode.Seed;
+                hash = hash * HashCode.Factor + (Name != null ? Name.GetHashCode() : 0);
+                hash = hash * HashCode.Factor + (TypeFullName != null ? TypeFullName.GetHashCode() : 0);
+                hash = hash * HashCode.Factor + IsValueType.GetHashCode();
+                hash = hash * HashCode.Factor + (int)MappingKind;
+                hash = hash * HashCode.Factor + (SourcePropertyName != null ? SourcePropertyName.GetHashCode() : 0);
+                hash = hash * HashCode.Factor + (NestedDtoTypeName != null ? NestedDtoTypeName.GetHashCode() : 0);
+                hash = hash * HashCode.Factor + (NestedDtoTypeFullName != null ? NestedDtoTypeFullName.GetHashCode() : 0);
+                hash = hash * HashCode.Factor + (CollectionElementTypeFullName != null ? CollectionElementTypeFullName.GetHashCode() : 0);
+                hash = hash * HashCode.Factor + IsNullable.GetHashCode();
+                hash = hash * HashCode.Factor + IsArray.GetHashCode();
+                hash = hash * HashCode.Factor + (FlattenedPath != null ? FlattenedPath.GetHashCode() : 0);
+                hash = hash * HashCode.Factor + FlattenedPathHasNullableSegment.GetHashCode();
+                hash = hash * HashCode.Factor + (ConvertMethod != null ? ConvertMethod.GetHashCode() : 0);
+                hash = hash * HashCode.Factor + (ConvertBackMethod != null ? ConvertBackMethod.GetHashCode() : 0);
+                hash = hash * HashCode.Factor + (ConvertContainingType != null ? ConvertContainingType.GetHashCode() : 0);
+                hash = hash * HashCode.Factor + (FlattenedNavigationType != null ? FlattenedNavigationType.GetHashCode() : 0);
+                hash = hash * HashCode.Factor + (CollectionConvertMethod != null ? CollectionConvertMethod.GetHashCode() : 0);
+                hash = hash * HashCode.Factor + IsInherited.GetHashCode();
+                hash = hash * HashCode.Factor + (SourceParameter != null ? SourceParameter.GetHashCode() : 0);
+                hash = hash * HashCode.Factor + (int)EnumConversion;
+                hash = hash * HashCode.Factor + (SourceEnumTypeFullName != null ? SourceEnumTypeFullName.GetHashCode() : 0);
+                hash = hash * HashCode.Factor + (ConditionalMethod != null ? ConditionalMethod.GetHashCode() : 0);
+                hash = hash * HashCode.Factor + CopiedAttributes.Length.GetHashCode();
+                hash = hash * HashCode.Factor + NestedProperties.Length.GetHashCode();
                 return hash;
             }
         }
@@ -366,10 +372,10 @@ namespace Facette.Generator.Models
         {
             unchecked
             {
-                var hash = 17;
-                hash = hash * 31 + (SourceTypeFullName != null ? SourceTypeFullName.GetHashCode() : 0);
-                hash = hash * 31 + (Prefix != null ? Prefix.GetHashCode() : 0);
-                hash = hash * 31 + (ParameterName != null ? ParameterName.GetHashCode() : 0);
+                var hash = HashCode.Seed;
+                hash = hash * HashCode.Factor + (SourceTypeFullName != null ? SourceTypeFullName.GetHashCode() : 0);
+                hash = hash * HashCode.Factor + (Prefix != null ? Prefix.GetHashCode() : 0);
+                hash = hash * HashCode.Factor + (ParameterName != null ? ParameterName.GetHashCode() : 0);
                 return hash;
             }
         }

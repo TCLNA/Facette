@@ -11,6 +11,16 @@ namespace Facette.Generator.Builders
 {
     public static class ModelBuilder
     {
+        // Well-known collection type display strings used for collection detection
+        private const string HashSetT = "System.Collections.Generic.HashSet<T>";
+        private const string ISetT = "System.Collections.Generic.ISet<T>";
+        private const string ImmutableArrayT = "System.Collections.Immutable.ImmutableArray<T>";
+        private const string ImmutableListT = "System.Collections.Immutable.ImmutableList<T>";
+        private const string IImmutableListT = "System.Collections.Immutable.IImmutableList<T>";
+        private const string IReadOnlyListT = "System.Collections.Generic.IReadOnlyList<T>";
+        private const string IReadOnlyCollectionT = "System.Collections.Generic.IReadOnlyCollection<T>";
+        private const string IEnumerableT = "System.Collections.Generic.IEnumerable<T>";
+
         public static FacetteTargetModel Build(GeneratorAttributeSyntaxContext context)
         {
             var targetSymbol = (INamedTypeSymbol)context.TargetSymbol;
@@ -1609,26 +1619,26 @@ namespace Facette.Generator.Builders
             string convertMethod;
             string dtoCollectionTypeName;
 
-            if (originalDef == "System.Collections.Generic.HashSet<T>"
-                || originalDef == "System.Collections.Generic.ISet<T>")
+            if (originalDef == HashSetT
+                || originalDef == ISetT)
             {
                 convertMethod = ".ToHashSet()";
                 dtoCollectionTypeName = "global::System.Collections.Generic.HashSet<" + dtoElementType + ">";
             }
-            else if (originalDef == "System.Collections.Immutable.ImmutableArray<T>")
+            else if (originalDef == ImmutableArrayT)
             {
                 convertMethod = ".ToImmutableArray()";
                 dtoCollectionTypeName = "global::System.Collections.Immutable.ImmutableArray<" + dtoElementType + ">";
             }
-            else if (originalDef == "System.Collections.Immutable.ImmutableList<T>"
-                || originalDef == "System.Collections.Immutable.IImmutableList<T>")
+            else if (originalDef == ImmutableListT
+                || originalDef == IImmutableListT)
             {
                 convertMethod = ".ToImmutableList()";
                 dtoCollectionTypeName = "global::System.Collections.Immutable.ImmutableList<" + dtoElementType + ">";
             }
-            else if (originalDef == "System.Collections.Generic.IReadOnlyList<T>"
-                || originalDef == "System.Collections.Generic.IReadOnlyCollection<T>"
-                || originalDef == "System.Collections.Generic.IEnumerable<T>")
+            else if (originalDef == IReadOnlyListT
+                || originalDef == IReadOnlyCollectionT
+                || originalDef == IEnumerableT)
             {
                 // IReadOnlyList/IReadOnlyCollection/IEnumerable — produce List which implements all of them
                 convertMethod = ".ToList()";
