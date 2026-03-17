@@ -107,5 +107,13 @@ namespace Facette.Generator.Diagnostics
             category: "Facette",
             defaultSeverity: DiagnosticSeverity.Error,
             isEnabledByDefault: true);
+
+        public static readonly DiagnosticDescriptor FCT099_InternalError = new DiagnosticDescriptor(
+            id: "FCT099",
+            title: "Internal Facette generator error",
+            messageFormat: "An unexpected error occurred while generating code for '{0}': {1}. Please report this at https://github.com/TCLNA/Facette/issues",
+            category: "Facette",
+            defaultSeverity: DiagnosticSeverity.Warning,
+            isEnabledByDefault: true);
     }
 }
