@@ -67,7 +67,10 @@ namespace Facette.Generator
                     if (model.GenerateMapper)
                     {
                         var mapperCode = MapperClassBuilder.Build(model);
-                        spc.AddSource(model.TypeName + "Mapper.g.cs", mapperCode);
+                        var mapperHintName = string.IsNullOrEmpty(model.Namespace)
+                            ? model.TypeName + "Mapper.g.cs"
+                            : model.Namespace + "." + model.TypeName + "Mapper.g.cs";
+                        spc.AddSource(mapperHintName, mapperCode);
                     }
                 }
                 catch (Exception ex)
@@ -167,7 +170,10 @@ namespace Facette.Generator
                 + hooks + "\n"
                 + "}\n";
 
-            spc.AddSource(model.TypeName + ".g.cs", code);
+            var hintName = string.IsNullOrEmpty(model.Namespace)
+                ? model.TypeName + ".g.cs"
+                : model.Namespace + "." + model.TypeName + ".g.cs";
+            spc.AddSource(hintName, code);
         }
     }
 }
